@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Partículas Three.js + Webcam</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #video-container {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 160px;
+            height: 120px;
+            z-index: 100;
+            border: 2px solid white;
+            opacity: 0.7;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1); /* Efecto espejo */
+        }
+        #loading {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: white; font-family: sans-serif; font-size: 20px;
+            pointer-events: none;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="loading">Cargando modelos de IA y Webcam...<br>Por favor permite el acceso a la cámara.</div>
+    <div id="video-container">
+        <video id="input_video"></video>
+    </div>
+
+    <script>
+        // --- 1. CONFIGURACIÓN DE THREE.JS ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 30;
+
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Crear Partículas
+        const particleCount = 5000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const originalPositions = new Float32Array(particleCount * 3);
+        const velocities = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount * 3; i++) {
+            positions[i] = (Math.random() - 0.5) * 50; // Esparcir en área amplia
+            originalPositions[i] = positions[i]; // Guardar posición "home"
+            velocities[i] = 0;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        
+        const material = new THREE.PointsMaterial({
+            color: 0x00ffff,
+            size: 0.3,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        const particles = new THREE.Points(geometry, material);
+        scene.add(particles);
+
+        // --- 2. VARIABLES DE ESTADO DE LA MANO ---
+        let handPosition = { x: 0, y: 0, z: 0 };
+        let isHandDetected = false;
+        let isHandClosed = false;
+
+        // --- 3. CONFIGURACIÓN DE MEDIAPIPE (Visión) ---
+        const videoElement = document.getElementById('input_video');
+        
+        function onResults(results) {
+            document.getElementById('loading').style.display = 'none';
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                isHandDetected = true;
+                const landmarks = results.multiHandLandmarks[0];
+
+                // 1. Obtener posición de la mano (usamos la muñeca - punto 0)
+                // Convertimos coordenadas de pantalla (0 a 1) a coordenadas de Three.js
+                // Nota: Invertimos X para efecto espejo
+                const x = (1 - landmarks[0].x) * 40 - 20; 
+                const y = -(landmarks[0].y * 30 - 15);
+                
+                // Suavizado simple (Lerp) para que no tiemble
+                handPosition.x += (x - handPosition.x) * 0.1;
+                handPosition.y += (y - handPosition.y) * 0.1;
+
+                // 2. Detectar si la mano está abierta o cerrada
+                // Medimos distancia entre la muñeca (0) y la punta del dedo medio (12)
+                const wrist = landmarks[0];
+                const middleFingerTip = landmarks[12];
+                
+                // Distancia euclidiana simple
+                const distance = Math.sqrt(
+                    Math.pow(wrist.x - middleFingerTip.x, 2) + 
+                    Math.pow(wrist.y - middleFingerTip.y, 2)
+                );
+
+                // Umbral empírico: Si es menor a 0.3 (aprox), está cerrada
+                isHandClosed = distance < 0.25; 
+                
+                // Cambiar color según estado para feedback visual
+                material.color.setHex(isHandClosed ? 0xff0055 : 0x00ffaa); // Rojo si cerrado, Verde si abierto
+
+            } else {
+                isHandDetected = false;
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file};
+        }});
+        
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        
+        hands.onResults(onResults);
+
+        const cameraFeed = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+        cameraFeed.start();
+
+        // --- 4. BUCLE DE ANIMACIÓN (Física) ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const posArray = particles.geometry.attributes.position.array;
+
+            for (let i = 0; i < particleCount; i++) {
+                const ix = i * 3;
+                const iy = i * 3 + 1;
+                const iz = i * 3 + 2;
+
+                // Física básica
+                let px = posArray[ix];
+                let py = posArray[iy];
+                let pz = posArray[iz];
+
+                // Si detectamos mano, interactuamos
+                if (isHandDetected) {
+                    const dx = handPosition.x - px;
+                    const dy = handPosition.y - py;
+                    const dz = 0 - pz; // Asumimos mano en z=0
+                    
+                    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                    
+                    // Fuerza basada en la distancia (más cerca, más fuerte)
+                    // Evitamos división por cero con Math.max
+                    let force = 1 / Math.max(dist, 1); 
+
+                    if (isHandClosed) {
+                        // ATRAER (Gravedad)
+                        velocities[ix] += dx * force * 0.05;
+                        velocities[iy] += dy * force * 0.05;
+                        velocities[iz] += dz * force * 0.05;
+                    } else {
+                        // REPELER (Explosión)
+                        // Solo afecta si están cerca de la mano
+                        if (dist < 8) {
+                            velocities[ix] -= dx * force * 0.2;
+                            velocities[iy] -= dy * force * 0.2;
+                            velocities[iz] -= dz * force * 0.2;
+                        }
+                    }
+                }
+
+                // Retorno elástico a la posición original (Fuerza de resorte)
+                // Esto hace que las partículas vuelvan a formar la nube cuando quitas la mano
+                const ox = originalPositions[ix];
+                const oy = originalPositions[iy];
+                const oz = originalPositions[iz];
+
+                velocities[ix] += (ox - px) * 0.01;
+                velocities[iy] += (oy - py) * 0.01;
+                velocities[iz] += (oz - pz) * 0.01;
+
+                // Fricción (para que no se muevan eternamente)
+                velocities[ix] *= 0.90;
+                velocities[iy] *= 0.90;
+                velocities[iz] *= 0.90;
+
+                // Aplicar velocidad
+                posArray[ix] += velocities[ix];
+                posArray[iy] += velocities[iy];
+                posArray[iz] += velocities[iz];
+            }
+
+            particles.geometry.attributes.position.needsUpdate = true;
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Ajustar al redimensionar ventana
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
