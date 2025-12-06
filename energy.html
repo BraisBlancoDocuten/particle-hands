@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Bola de Energía Mágica</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        
+        #input_video {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; transform: scaleX(-1); z-index: 0;
+            opacity: 0.5; /* Oscurecemos un poco el video para que resalte la magia */
+        }
+
+        canvas { 
+            position: absolute; top: 0; left: 0; z-index: 1; pointer-events: none; 
+        }
+
+        #loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; font-family: 'Courier New', sans-serif; font-size: 18px; z-index: 10;
+            text-align: center; background: rgba(0,0,0,0.8); padding: 20px; border: 1px solid cyan;
+            box-shadow: 0 0 15px cyan;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="loading">
+        Inicializando Núcleo de Magia...<br>
+        Por favor, permite el acceso a la cámara.
+    </div>
+    
+    <video id="input_video" playsinline></video>
+
+    <script>
+        // --- 1. SETUP DE THREE.JS ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 25; // Alejamos un poco la cámara para ver bien la explosión
+
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000, 0);
+        document.body.appendChild(renderer.domElement);
+
+        // Ajuste de coordenadas 3D vs 2D
+        let visibleHeight, visibleWidth;
+        function updateVisibleSize() {
+            const vFOV = THREE.MathUtils.degToRad(camera.fov);
+            visibleHeight = 2 * Math.tan(vFOV / 2) * camera.position.z;
+            visibleWidth = visibleHeight * camera.aspect;
+        }
+        updateVisibleSize();
+
+        // --- 2. TEXTURA GENERATIVA (Núcleo brillante) ---
+        function getTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64; // Más resolución
+            const ctx = canvas.getContext('2d');
+            
+            // Un gradiente más intenso y definido
+            const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            g.addColorStop(0, 'rgba(255, 255, 255, 1)');   // Centro blanco puro
+            g.addColorStop(0.2, 'rgba(200, 255, 255, 1)'); // Halo brillante
+            g.addColorStop(0.4, 'rgba(64, 200, 255, 0.5)'); // Cuerpo
+            g.addColorStop(1, 'rgba(0, 0, 0, 0)');         // Borde transparente
+            
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, 64, 64);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // --- 3. CREACIÓN DE LA BOLA DE ENERGÍA ---
+        const particleCount = 2500;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        
+        // Guardamos la dirección normalizada (vector unitario) de cada partícula
+        // Esto define la forma esférica base
+        const directions = new Float32Array(particleCount * 3);
+        const randoms = new Float32Array(particleCount); // Para variedad en movimiento
+
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            
+            // Coordenadas esféricas
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos((Math.random() * 2) - 1);
+            
+            // Calculamos vector unitario (dirección desde el centro)
+            const x = Math.sin(phi) * Math.cos(theta);
+            const y = Math.sin(phi) * Math.sin(theta);
+            const z = Math.cos(phi);
+
+            directions[i3] = x;
+            directions[i3+1] = y;
+            directions[i3+2] = z;
+            
+            // Inicializamos posiciones en 0
+            positions[i3] = 0; positions[i3+1] = 0; positions[i3+2] = 0;
+            randoms[i] = Math.random(); // Valor aleatorio para desincronizar partículas
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        const material = new THREE.PointsMaterial({
+            color: 0x00ffff,
+            size: 0.8,
+            map: getTexture(),
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending, // ¡Clave para que parezca luz!
+            depthWrite: false
+        });
+
+        const particles = new THREE.Points(geometry, material);
+        scene.add(particles);
+
+        // --- 4. LÓGICA DE DETECCIÓN Y ESTADO ---
+        let handPosition = { x: 0, y: 0, z: 0 };
+        let smoothedHand = { x: 0, y: 0, z: 0 };
+        let isHandDetected = false;
+        let isHandClosed = false;
+        let wasHandClosed = false; // Para detectar el momento exacto de abrir
+
+        // VARIABLES MÁGICAS
+        let sphereRadius = 0;       // Radio actual de la bola
+        let targetRadius = 5;       // Radio al que quiere llegar (Intermedio)
+        let rotationSpeed = 1;      // Velocidad de giro de las partículas
+        let instability = 0;        // Cuánto tiemblan las partículas
+        
+        // Colores
+        const colorOpen = new THREE.Color(0x00ffff); // Cyan
+        const colorClosed = new THREE.Color(0xff3300); // Rojo anaranjado
+
+        function onResults(results) {
+            document.getElementById('loading').style.display = 'none';
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                isHandDetected = true;
+                const landmarks = results.multiHandLandmarks[0];
+
+                // Posición (Centro de la palma aprox - punto 9)
+                const x = (1 - landmarks[9].x) * visibleWidth - (visibleWidth / 2);
+                const y = -(landmarks[9].y * visibleHeight - (visibleHeight / 2));
+                
+                // Suavizado más rápido para que responda bien
+                smoothedHand.x += (x - smoothedHand.x) * 0.2;
+                smoothedHand.y += (y - smoothedHand.y) * 0.2;
+
+                // Detectar Puño
+                const wrist = landmarks[0];
+                const tip = landmarks[12];
+                const dist = Math.sqrt(Math.pow(wrist.x - tip.x, 2) + Math.pow(wrist.y - tip.y, 2));
+                
+                isHandClosed = dist < 0.22; // Ajusta este valor si es necesario
+            } else {
+                isHandDetected = false;
+            }
+        }
+
+        // Configuración MediaPipe
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+        hands.onResults(onResults);
+        
+        const cameraFeed = new Camera(document.getElementById('input_video'), {
+            onFrame: async () => { await hands.send({image: document.getElementById('input_video')}); },
+            width: 1280, height: 720
+        });
+        cameraFeed.start();
+
+        // --- 5. ANIMACIÓN Y FÍSICA ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = Date.now() * 0.001;
+
+            if (isHandDetected) {
+                // --- LÓGICA DEL HECHIZO ---
+                
+                if (isHandClosed) {
+                    // ESTADO: CARGANDO ENERGÍA (Puño cerrado)
+                    targetRadius = 1.5; // Muy pequeña y concentrada
+                    rotationSpeed = 8.0; // Gira rapidísimo
+                    instability = 0.2; // Tiembla un poco por la presión
+                    
+                    // Transición de color a ROJO
+                    material.color.lerp(colorClosed, 0.1);
+                } else {
+                    // ESTADO: ABIERTO
+                    
+                    // DETECTAR LA EXPLOSIÓN:
+                    // Si antes estaba cerrado y ahora está abierto... ¡BOOM!
+                    if (wasHandClosed) {
+                        sphereRadius = 25; // Expansión instantánea gigante
+                    }
+
+                    // ESTADO: ESTABLE (Mano abierta sostenida)
+                    targetRadius = 6.0; // Tamaño intermedio
+                    rotationSpeed = 1.5; // Giro suave
+                    instability = 1.0; // Movimiento fluido tipo llama
+                    
+                    // Transición de color a CYAN
+                    material.color.lerp(colorOpen, 0.1);
+                }
+
+                // Guardamos estado para el siguiente frame
+                wasHandClosed = isHandClosed;
+
+                // Transición suave del radio actual hacia el objetivo
+                // (Lerp interpolación lineal)
+                sphereRadius += (targetRadius - sphereRadius) * 0.1;
+
+            } else {
+                // Si no hay mano, la bola desaparece
+                sphereRadius *= 0.9;
+            }
+
+            // --- ACTUALIZAR PARTÍCULAS ---
+            const positions = particles.geometry.attributes.position.array;
+
+            for (let i = 0; i < particleCount; i++) {
+                const i3 = i * 3;
+                
+                // 1. Obtener la dirección base de la esfera
+                let dx = directions[i3];
+                let dy = directions[i3+1];
+                let dz = directions[i3+2];
+
+                // 2. Aplicar rotación global (Hacer que la esfera gire)
+                // Usamos fórmulas de rotación 2D sobre los ejes
+                const rotAngle = time * rotationSpeed * (randoms[i] * 0.5 + 0.5); // Cada capa gira distinta
+                
+                // Rotar en eje Y
+                const tempX = dx * Math.cos(rotAngle) - dz * Math.sin(rotAngle);
+                const tempZ = dx * Math.sin(rotAngle) + dz * Math.cos(rotAngle);
+                dx = tempX; dz = tempZ;
+
+                // 3. Calcular radio final para esta partícula
+                // Radio base + Ruido (Simula llamas o electricidad)
+                // Usamos senos y cosenos del tiempo para que "respire"
+                const noise = Math.sin(time * 5 + randoms[i] * 10) * instability;
+                const currentParticleRadius = sphereRadius + noise;
+
+                // 4. Posicionar partícula
+                positions[i3] = smoothedHand.x + dx * currentParticleRadius;
+                positions[i3+1] = smoothedHand.y + dy * currentParticleRadius;
+                positions[i3+2] = smoothedHand.z + dz * currentParticleRadius;
+            }
+
+            particles.geometry.attributes.position.needsUpdate = true;
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            updateVisibleSize();
+        });
+    </script>
+</body>
+</html>
