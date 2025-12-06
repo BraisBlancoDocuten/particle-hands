@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Bola de Energía - Tamaño Dinámico</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        
+        #input_video {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; transform: scaleX(-1); z-index: 0; opacity: 0.5;
+        }
+
+        canvas { 
+            position: absolute; top: 0; left: 0; z-index: 1; pointer-events: none; 
+        }
+
+        #loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: cyan; font-family: 'Courier New', sans-serif; font-size: 18px; z-index: 10;
+            text-align: center; background: rgba(0,0,0,0.8); padding: 20px; border: 1px solid cyan;
+            box-shadow: 0 0 15px cyan;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="loading">
+        Calibrando Sensores de Profundidad...<br>
+        Acerca y aleja la mano para probar el tamaño.
+    </div>
+    
+    <video id="input_video" playsinline></video>
+
+    <script>
+        // --- 1. SETUP BÁSICO ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 25;
+
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000, 0);
+        document.body.appendChild(renderer.domElement);
+
+        let visibleHeight, visibleWidth;
+        function updateVisibleSize() {
+            const vFOV = THREE.MathUtils.degToRad(camera.fov);
+            visibleHeight = 2 * Math.tan(vFOV / 2) * camera.position.z;
+            visibleWidth = visibleHeight * camera.aspect;
+        }
+        updateVisibleSize();
+
+        // --- 2. TEXTURA ---
+        function getTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            g.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            g.addColorStop(0.2, 'rgba(100, 200, 255, 1)');
+            g.addColorStop(0.5, 'rgba(20, 50, 200, 0.4)');
+            g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, 64, 64);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // --- 3. SISTEMA DE PARTÍCULAS ---
+        const particleCount = 2000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const directions = new Float32Array(particleCount * 3);
+        const randoms = new Float32Array(particleCount);
+
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos((Math.random() * 2) - 1);
+            directions[i3] = Math.sin(phi) * Math.cos(theta);
+            directions[i3+1] = Math.sin(phi) * Math.sin(theta);
+            directions[i3+2] = Math.cos(phi);
+            positions[i3] = 0; positions[i3+1] = 0; positions[i3+2] = 0;
+            randoms[i] = Math.random();
+        }
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const material = new THREE.PointsMaterial({
+            color: 0x00ffff, size: 0.8, map: getTexture(),
+            transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false
+        });
+        const particles = new THREE.Points(geometry, material);
+        scene.add(particles);
+
+        // --- 4. VARIABLES DE FÍSICA Y ESTADO ---
+        let targetHand = { x: 0, y: 0, z: 0 };
+        let ballPosition = { x: 0, y: 0, z: 0 };
+        let ballVelocity = { x: 0, y: 0, z: 0 };
+        const TENSION = 0.03;
+        const FRICTION = 0.92;
+
+        let isHandDetected = false;
+        let isHandClosed = false;
+        let wasHandClosed = false;
+        
+        let sphereRadius = 0;
+        let targetRadius = 5;
+        
+        // --- NUEVO: Variable para almacenar el tamaño calculado de la mano ---
+        let dynamicHandSize = 5.0; 
+
+        // --- 5. DETECCIÓN MEDIAPIPE ---
+        function onResults(results) {
+            document.getElementById('loading').style.display = 'none';
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                isHandDetected = true;
+                const landmarks = results.multiHandLandmarks[0];
+
+                // Posición
+                const x = (1 - landmarks[9].x) * visibleWidth - (visibleWidth / 2);
+                const y = -(landmarks[9].y * visibleHeight - (visibleHeight / 2));
+                targetHand.x = x;
+                targetHand.y = y;
+                targetHand.z = 0; 
+
+                // --- NUEVO: Calcular tamaño de la mano por distancia entre Muñeca(0) y Nudillo(9) ---
+                const p0 = landmarks[0]; // Muñeca
+                const p9 = landmarks[9]; // Nudillo central
+                // Distancia Pitagórica simple (coordenadas normalizadas 0-1)
+                const rawDistance = Math.sqrt(Math.pow(p0.x - p9.x, 2) + Math.pow(p0.y - p9.y, 2));
+                
+                // Multiplicador empírico: Convierte la distancia normalizada a unidades 3D.
+                // ¡AJUSTA ESTE 35 SI LA BOLA ES MUY GRANDE O MUY PEQUEÑA EN GENERAL!
+                dynamicHandSize = rawDistance * 35.0;
+                
+                // Limitar el tamaño mínimo para que no desaparezca si el cálculo falla un momento
+                dynamicHandSize = Math.max(dynamicHandSize, 2.5);
+
+
+                // Detectar Puño (Muñeca a Punta Dedo Medio)
+                const p12 = landmarks[12]; // Punta dedo medio
+                const fistDist = Math.sqrt(Math.pow(p0.x - p12.x, 2) + Math.pow(p0.y - p12.y, 2));
+                isHandClosed = fistDist < 0.22;
+
+            } else {
+                isHandDetected = false;
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5 });
+        hands.onResults(onResults);
+        
+        const cameraFeed = new Camera(document.getElementById('input_video'), {
+            onFrame: async () => { await hands.send({image: document.getElementById('input_video')}); },
+            width: 1280, height: 720
+        });
+        cameraFeed.start();
+
+        // --- 6. BUCLE PRINCIPAL ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = Date.now() * 0.001;
+
+            if (isHandDetected) {
+                // Física de Inercia
+                const ax = (targetHand.x - ballPosition.x) * TENSION;
+                const ay = (targetHand.y - ballPosition.y) * TENSION;
+                const az = (targetHand.z - ballPosition.z) * TENSION;
+                ballVelocity.x += ax; ballVelocity.y += ay; ballVelocity.z += az;
+                ballVelocity.x *= FRICTION; ballVelocity.y *= FRICTION; ballVelocity.z *= FRICTION;
+                ballPosition.x += ballVelocity.x; ballPosition.y += ballVelocity.y; ballPosition.z += ballVelocity.z;
+
+                // Lógica de Tamaño y Color
+                if (isHandClosed) {
+                    targetRadius = 1.2; // Tamaño fijo pequeño al comprimir
+                    material.color.lerp(new THREE.Color(0xff5500), 0.1);
+                } else {
+                    if (wasHandClosed) sphereRadius = 30; // Explosión inicial más grande
+
+                    // --- NUEVO: Usamos el tamaño dinámico calculado ---
+                    targetRadius = dynamicHandSize; 
+                    
+                    material.color.lerp(new THREE.Color(0x00ffff), 0.1);
+                }
+                wasHandClosed = isHandClosed;
+                // Suavizado del radio
+                sphereRadius += (targetRadius - sphereRadius) * 0.1;
+
+            } else {
+                ballVelocity.x *= 0.9; ballVelocity.y *= 0.9;
+                ballPosition.x += ballVelocity.x; ballPosition.y += ballVelocity.y;
+                sphereRadius *= 0.9;
+            }
+
+            // Renderizado Partículas
+            const posArray = particles.geometry.attributes.position.array;
+            for (let i = 0; i < particleCount; i++) {
+                const i3 = i * 3;
+                let dx = directions[i3]; let dy = directions[i3+1]; let dz = directions[i3+2];
+
+                const rotSpeed = isHandClosed ? 8.0 : 2.0;
+                const rot = time * rotSpeed * (randoms[i] + 0.5);
+                const tx = dx * Math.cos(rot) - dz * Math.sin(rot);
+                const tz = dx * Math.sin(rot) + dz * Math.cos(rot);
+                dx = tx; dz = tz;
+
+                const noise = Math.sin(time * 5 + randoms[i] * 10) * (isHandClosed ? 0.2 : 0.8);
+                const r = sphereRadius + noise;
+
+                posArray[i3]   = ballPosition.x + dx * r - (ballVelocity.x * randoms[i] * 2.5); 
+                posArray[i3+1] = ballPosition.y + dy * r - (ballVelocity.y * randoms[i] * 2.5);
+                posArray[i3+2] = ballPosition.z + dz * r;
+            }
+            particles.geometry.attributes.position.needsUpdate = true;
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            updateVisibleSize();
+        });
+    </script>
+</body>
+</html>
