@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Pizarra Aérea (Detección Corregida)</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        
+        #input_video {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; transform: scaleX(-1); z-index: 0; opacity: 0.6;
+        }
+
+        canvas { 
+            position: absolute; top: 0; left: 0; z-index: 1; pointer-events: none; 
+        }
+
+        #ui-layer {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 10; text-align: center; font-family: sans-serif; 
+            text-shadow: 0 0 4px black;
+        }
+
+        .status-box {
+            background: rgba(0, 0, 0, 0.7); color: white; padding: 10px 20px;
+            border-radius: 20px; border: 2px solid #555;
+            display: inline-block; font-size: 18px; font-weight: bold;
+            transition: all 0.3s;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div id="status" class="status-box">Cargando...</div>
+        <div style="margin-top: 5px; color: #aaa; font-size: 12px;">
+            ☝️ Índice: Escribir | ✋ Abierta: Pausa | ✊ Puño: Borrar
+        </div>
+    </div>
+    
+    <video id="input_video" playsinline></video>
+
+    <script>
+        // --- 1. CONFIGURACIÓN THREE.JS ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 20;
+
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000, 0);
+        document.body.appendChild(renderer.domElement);
+
+        const drawingsGroup = new THREE.Group();
+        scene.add(drawingsGroup);
+
+        let visibleHeight, visibleWidth;
+        function updateVisibleSize() {
+            const vFOV = THREE.MathUtils.degToRad(camera.fov);
+            visibleHeight = 2 * Math.tan(vFOV / 2) * camera.position.z;
+            visibleWidth = visibleHeight * camera.aspect;
+        }
+        updateVisibleSize();
+
+        // --- 2. EL CURSOR ---
+        const cursorGeo = new THREE.SphereGeometry(0.3, 16, 16);
+        const cursorMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+        const cursor = new THREE.Mesh(cursorGeo, cursorMat);
+        scene.add(cursor);
+
+        // --- 3. LÓGICA DE DIBUJO ---
+        let currentLine = null;
+        let currentPathPoints = [];
+        const colors = [0x00ffff, 0xff00ff, 0xffff00, 0x00ff00, 0xffaa00];
+        let colorIndex = 0;
+
+        function startStroke(position) {
+            currentPathPoints = [];
+            currentPathPoints.push(position.clone());
+            const material = new THREE.LineBasicMaterial({ 
+                color: colors[colorIndex % colors.length], linewidth: 3 
+            });
+            const geometry = new THREE.BufferGeometry().setFromPoints(currentPathPoints);
+            currentLine = new THREE.Line(geometry, material);
+            currentLine.frustumCulled = false; 
+            drawingsGroup.add(currentLine);
+            colorIndex++;
+        }
+
+        function updateStroke(position) {
+            if (!currentLine) return;
+            currentPathPoints.push(position.clone());
+            currentLine.geometry.setFromPoints(currentPathPoints);
+        }
+
+        function endStroke() {
+            currentLine = null;
+        }
+
+        function clearCanvas() {
+            while(drawingsGroup.children.length > 0){ 
+                const obj = drawingsGroup.children[0];
+                obj.geometry.dispose(); obj.material.dispose();
+                drawingsGroup.remove(obj); 
+            }
+            currentLine = null; colorIndex = 0;
+        }
+
+        // --- 4. DETECCIÓN DE GESTOS (CORREGIDA) ---
+        let handPos = new THREE.Vector3(0,0,0);
+        let smoothedPos = new THREE.Vector3(0,0,0);
+        let isHandDetected = false;
+        
+        const STATE_WAITING = 0;
+        const STATE_WRITING = 1;
+        const STATE_HOVER = 2;
+        const STATE_ERASE = 3;
+
+        let currentState = STATE_WAITING;
+        let previousState = STATE_WAITING;
+        const statusDiv = document.getElementById('status');
+
+        function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                isHandDetected = true;
+                const landmarks = results.multiHandLandmarks[0];
+
+                // Coordenadas punta índice
+                const x = (1 - landmarks[8].x) * visibleWidth - (visibleWidth / 2);
+                const y = -(landmarks[8].y * visibleHeight - (visibleHeight / 2));
+                handPos.set(x, y, 0);
+
+                // --- LÓGICA DE DETECCIÓN EXACTA DE LA BOLA ANTERIOR ---
+                // Y=0 es arriba, Y=1 es abajo.
+                // < significa "más arriba que", > significa "más abajo que"
+                
+                const isPointing = (landmarks[8].y < landmarks[6].y) &&  // Índice Arriba
+                                   (landmarks[12].y > landmarks[10].y) && // Medio Abajo
+                                   (landmarks[16].y > landmarks[14].y) && // Anular Abajo
+                                   (landmarks[20].y > landmarks[18].y);   // Meñique Abajo
+
+                // --- DETECCIÓN DE PUÑO (Para borrar) ---
+                // Ahora exigimos que el índice TAMBIÉN esté abajo para considerar que es un puño.
+                // Esto evita que al apuntar se active el borrador por error.
+                const isIndexDown = landmarks[8].y > landmarks[6].y;
+                
+                const wrist = landmarks[0];
+                const middleTip = landmarks[12];
+                // Distancia muñeca a dedo medio para saber si está compacta la mano
+                const fistDist = Math.sqrt(Math.pow(wrist.x - middleTip.x, 2) + Math.pow(wrist.y - middleTip.y, 2));
+                const isCompact = fistDist < 0.25;
+
+                // Es puño SOLO si está compacta Y el índice está bajado
+                const isFist = isCompact && isIndexDown;
+
+
+                // --- MÁQUINA DE ESTADOS ---
+                if (isFist) {
+                    currentState = STATE_ERASE;
+                } else if (isPointing) {
+                    currentState = STATE_WRITING;
+                } else {
+                    currentState = STATE_HOVER;
+                }
+
+            } else {
+                isHandDetected = false;
+                currentState = STATE_WAITING;
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+        hands.onResults(onResults);
+        
+        const cameraFeed = new Camera(document.getElementById('input_video'), {
+            onFrame: async () => { await hands.send({image: document.getElementById('input_video')}); },
+            width: 1280, height: 720
+        });
+        cameraFeed.start();
+
+        // --- 5. BUCLE PRINCIPAL ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isHandDetected) {
+                smoothedPos.lerp(handPos, 0.2); 
+                cursor.position.copy(smoothedPos);
+                cursor.visible = true;
+
+                if (currentState === STATE_WRITING) {
+                    statusDiv.innerText = "✍️ Escribiendo";
+                    statusDiv.style.borderColor = "#00ffff"; statusDiv.style.color = "#00ffff";
+                    cursor.material.color.setHex(0x00ffff);
+
+                    if (previousState !== STATE_WRITING) startStroke(smoothedPos);
+                    else updateStroke(smoothedPos);
+
+                } else if (currentState === STATE_ERASE) {
+                    statusDiv.innerText = "💥 Borrando...";
+                    statusDiv.style.borderColor = "#ff0000"; statusDiv.style.color = "#ff0000";
+                    cursor.material.color.setHex(0xff0000);
+                    clearCanvas();
+
+                } else if (currentState === STATE_HOVER) {
+                    statusDiv.innerText = "✋ Pausa";
+                    statusDiv.style.borderColor = "#ffffff"; statusDiv.style.color = "#ffffff";
+                    cursor.material.color.setHex(0xffffff);
+                    if (previousState === STATE_WRITING) endStroke();
+                }
+                previousState = currentState;
+
+            } else {
+                cursor.visible = false;
+                if (previousState === STATE_WRITING) endStroke();
+                statusDiv.innerText = "Busco mano...";
+                statusDiv.style.borderColor = "#555"; statusDiv.style.color = "#aaa";
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            updateVisibleSize();
+        });
+    </script>
+</body>
+</html>
