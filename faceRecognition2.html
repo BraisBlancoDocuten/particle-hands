@@ -177,7 +177,7 @@
                 if (detection) {
                     // Guardar descriptor
                     labeledFaceDescriptor = new faceapi.LabeledFaceDescriptors('DNI', [detection.descriptor]);
-                    faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptor, 0.9);
+                    faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptor, 0.2);
 
                     // --- NUEVO: DIBUJAR RECUADRO EN DNI ---
                     refCanvas = faceapi.createCanvasFromMedia(refImage);
