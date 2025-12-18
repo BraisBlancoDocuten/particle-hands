@@ -33,9 +33,9 @@
             flex-direction: column;
             align-items: center;
             width: 340px;
+            position: relative;
         }
 
-        /* Contenedores para posicionar el canvas sobre la imagen/video */
         .media-wrapper {
             position: relative;
             display: flex;
@@ -47,41 +47,32 @@
             min-height: 200px;
             width: 100%;
         }
-        /* Guía de centrado */
+
         .camera-guide {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 180px; /* Tamaño del área óptima */
+            width: 180px;
             height: 220px;
             border: 3px dashed rgba(255, 255, 255, 0.5);
             border-radius: 50%;
             pointer-events: none;
             z-index: 10;
+            transition: all 0.3s ease;
         }
 
-        .guide-ok { border-color: #00ff00; background: rgba(0, 255, 0, 0.1); }
+        .guide-ok { border-color: #00ff00; background: rgba(0, 255, 0, 0.1); border-style: solid; }
         .guide-warn { border-color: #ffcc00; }
 
-        /* La imagen del DNI y el video deben comportarse igual */
         #ref-image, video {
             max-width: 100%;
             border-radius: 8px;
             display: block;
         }
 
-        video { transform: scaleX(-1); } /* Espejo webcam */
-        
-        /* El canvas de la webcam también debe espejarse */
-        #video-canvas { transform: scaleX(-1); }
-
-        /* Estilo general para cualquier canvas superpuesto (DNI o Webcam) */
-        canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
+        video { transform: scaleX(-1); }
+        canvas { position: absolute; top: 0; left: 0; }
 
         .status {
             margin-top: 15px;
@@ -91,14 +82,24 @@
             text-align: center;
             width: 100%;
             box-sizing: border-box;
+            min-height: 45px;
         }
-        
 
         .match { background-color: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; }
         .no-match { background-color: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
         .loading { background-color: #fff3cd; color: #664d03; border: 1px solid #ffecb5; }
         
-        input[type="file"] { margin-bottom: 10px; width: 100%; }
+        #timer-display {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -106,32 +107,31 @@
     <h2>Verificación de Identidad (DNI)</h2>
 
     <div id="loading-msg" class="status loading">
-        Cargando modelos de IA... (Espere un momento)
+        Cargando modelos de IA...
     </div>
 
     <div class="container">
         <div class="card">
             <h3>1. Foto del DNI</h3>
             <input type="file" id="imageUpload" accept="image/*">
-            
             <div class="media-wrapper" id="ref-container">
                 <img id="ref-image" src="" alt="" style="display:none;">
-                </div>
-            
+            </div>
             <div id="ref-status" class="status" style="display:none;"></div>
         </div>
 
-<div class="card">
-    <h3>2. Validación Biométrica</h3>
-    <div class="media-wrapper" id="video-container">
-        <video id="video" width="320" height="240" autoplay muted></video>
-        <div id="guide" class="camera-guide"></div>
-    </div>
-    <div id="instruction-msg" style="font-size: 0.8em; margin-top: 5px; color: #666;">
-        Centra tu cara en el círculo
-    </div>
-    <div id="match-status" class="status" style="display:none;">Esperando foto...</div>
-</div>
+        <div class="card">
+            <div id="timer-display">Escaneando... 5s</div>
+            <h3>2. Validación Biométrica</h3>
+            <div class="media-wrapper" id="video-container">
+                <video id="video" width="320" height="240" autoplay muted></video>
+                <div id="guide" class="camera-guide"></div>
+            </div>
+            <div id="instruction-msg" style="font-size: 0.8em; margin-top: 5px; color: #666;">
+                Sube la foto del DNI para comenzar
+            </div>
+            <div id="match-status" class="status" style="display:none;"></div>
+        </div>
     </div>
 
     <script>
@@ -143,13 +143,20 @@
         const loadingMsg = document.getElementById('loading-msg');
         const matchStatus = document.getElementById('match-status');
         const refStatus = document.getElementById('ref-status');
+        const guide = document.getElementById('guide');
+        const instructionMsg = document.getElementById('instruction-msg');
+        const timerDisplay = document.getElementById('timer-display');
 
         let labeledFaceDescriptor = null;
         let faceMatcher = null;
         let videoCanvas = null;
         let refCanvas = null;
 
-        // Cargar modelos
+        // Variables para el temporizador de 5 segundos
+        let scanTimer = null;
+        let secondsRemaining = 5;
+        let isProcessing = false;
+
         const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 
         Promise.all([
@@ -172,147 +179,138 @@
                 .catch(err => console.error("Error cámara:", err));
         }
 
-        // --- LÓGICA DE LA FOTO DEL DNI ---
         imageUpload.addEventListener('change', async () => {
             const file = imageUpload.files[0];
             if (!file) return;
-
-            // 1. Limpieza previa (borrar canvas anterior si sube otra foto)
             if (refCanvas) refCanvas.remove();
+            
             refImage.style.display = 'block';
             refStatus.style.display = 'block';
             refStatus.className = "status loading";
-            refStatus.innerText = "Escaneando documento...";
-            matchStatus.innerText = "Procesando DNI...";
-            matchStatus.className = "status loading";
+            refStatus.innerText = "Procesando DNI...";
             
-            // 2. Cargar imagen en memoria
             const imgUrl = URL.createObjectURL(file);
             refImage.src = imgUrl;
 
-            // Esperar a que la imagen cargue visualmente para tener dimensiones
             refImage.onload = async () => {
-                // 3. Detectar cara
                 const detection = await faceapi.detectSingleFace(refImage).withFaceLandmarks().withFaceDescriptor();
-
                 if (detection) {
-                    // Guardar descriptor
                     labeledFaceDescriptor = new faceapi.LabeledFaceDescriptors('DNI', [detection.descriptor]);
                     faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptor, 0.6);
 
-                    // --- NUEVO: DIBUJAR RECUADRO EN DNI ---
                     refCanvas = faceapi.createCanvasFromMedia(refImage);
                     refContainer.append(refCanvas);
                     const displaySize = { width: refImage.width, height: refImage.height };
                     faceapi.matchDimensions(refCanvas, displaySize);
-                    
                     const resizedDetection = faceapi.resizeResults(detection, displaySize);
-                    const box = resizedDetection.detection.box;
-                    const drawBox = new faceapi.draw.DrawBox(box, { label: "DNI OK", boxColor: "blue" });
+                    const drawBox = new faceapi.draw.DrawBox(resizedDetection.detection.box, { label: "DNI OK", boxColor: "blue" });
                     drawBox.draw(refCanvas);
-                    // --------------------------------------
 
-                    refStatus.innerText = "Rostro extraído del DNI correctamente.";
+                    refStatus.innerText = "DNI Procesado con éxito.";
                     refStatus.className = "status match";
-                    matchStatus.innerText = "Ahora mira a la cámara...";
-                    matchStatus.className = "status loading";
+                    instructionMsg.innerText = "Centra tu cara para iniciar el escaneo";
                 } else {
-                    refStatus.innerText = "No se ve una cara clara en el DNI. Intenta sin reflejos.";
+                    refStatus.innerText = "Error: No se detecta cara en el DNI.";
                     refStatus.className = "status no-match";
                     labeledFaceDescriptor = null;
                 }
             };
         });
 
-        // --- LÓGICA DE LA WEBCAM ---
         video.addEventListener('play', () => {
-            videoCanvas = faceapi.createCanvasFromMedia(video);
-            videoCanvas.id = 'video-canvas'; // Para estilo CSS
-            videoContainer.append(videoCanvas);
             const displaySize = { width: video.width, height: video.height };
-            faceapi.matchDimensions(videoCanvas, displaySize);
+            
+            setInterval(async () => {
+                if (isProcessing) return; // Si ya terminó, no hace nada
 
-const guide = document.getElementById('guide');
-const instructionMsg = document.getElementById('instruction-msg');
+                const detections = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors();
+                const resizedDetections = faceapi.resizeResults(detections, displaySize);
 
-setInterval(async () => {
-    const detections = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors();
-    const resizedDetections = faceapi.resizeResults(detections, displaySize);
-    
-    videoCanvas.getContext('2d').clearRect(0, 0, videoCanvas.width, videoCanvas.height);
+                if (resizedDetections.length === 0) {
+                    resetTimer("No se detecta rostro");
+                    return;
+                }
 
-    if (resizedDetections.length === 0) {
-        instructionMsg.innerText = "No se detecta rostro";
-        guide.className = "camera-guide";
-        return;
-    }
+                const detection = resizedDetections[0];
+                const box = detection.detection.box;
 
-    const detection = resizedDetections[0]; // Trabajamos con la primera cara detectada
-    const box = detection.detection.box;
+                // Parámetros de validación
+                const faceCenterX = box.x + box.width / 2;
+                const faceCenterY = box.y + box.height / 2;
+                const isCentered = Math.abs(faceCenterX - 160) < 50 && Math.abs(faceCenterY - 120) < 50;
+                const isGoodDistance = box.width > 110 && box.width < 190;
 
-    // --- CÁLCULOS DE POSICIÓN Y DISTANCIA ---
-    const faceCenterX = box.x + box.width / 2;
-    const faceCenterY = box.y + box.height / 2;
-    
-    // El centro del video es (160, 120) para un ancho de 320x240
-    const videoCenterX = 160;
-    const videoCenterY = 120;
+                if (!labeledFaceDescriptor) {
+                    instructionMsg.innerText = "Sube primero la foto del DNI";
+                    return;
+                }
 
-    // 1. Validar Distancia (Por ancho de la caja)
-    const minWidth = 100; // Demasiado lejos
-    const maxWidth = 200; // Demasiado cerca
-    
-    // 2. Validar Centrado (Margen de error de 40px)
-    const isCentered = Math.abs(faceCenterX - videoCenterX) < 40 && 
-                       Math.abs(faceCenterY - videoCenterY) < 40;
-
-    const isGoodDistance = box.width > minWidth && box.width < maxWidth;
-
-    if (!isCentered) {
-        instructionMsg.innerText = "Mueve la cara al centro";
-        guide.className = "camera-guide guide-warn";
-        return;
-    } else if (box.width < minWidth) {
-        instructionMsg.innerText = "Acércate un poco más";
-        guide.className = "camera-guide guide-warn";
-        return;
-    } else if (box.width > maxWidth) {
-        instructionMsg.innerText = "Aléjate un poco";
-        guide.className = "camera-guide guide-warn";
-        return;
-    } else {
-        instructionMsg.innerText = "Posición perfecta. Validando...";
-        guide.className = "camera-guide guide-ok";
-    }
-
-    // --- CONTINUAR CON EL MATCH SI LA POSICIÓN ES CORRECTA ---
-    if (!labeledFaceDescriptor || !faceMatcher) return;
-
-    const result = faceMatcher.findBestMatch(detection.descriptor);
-    const { label, distance } = result;
-    
-    let color = '#f00'; 
-    let text = 'Desconocido';
-
-    if (label !== 'unknown') {
-        color = '#0f0';
-        const confidence = Math.round((1 - distance) * 100);
-        text = `Eres tú (${confidence}%)`;
-        
-        matchStatus.innerText = `IDENTIDAD VERIFICADA (${confidence}%)`;
-        matchStatus.className = "status match";
-        matchStatus.style.display = "block";
-    } else {
-        matchStatus.innerText = "No coincides con el DNI";
-        matchStatus.className = "status no-match";
-        matchStatus.style.display = "block";
-    }
-
-    const drawBox = new faceapi.draw.DrawBox(box, { label: text, boxColor: color });
-    drawBox.draw(videoCanvas);
-
-}, 100);
+                if (isCentered && isGoodDistance) {
+                    guide.className = "camera-guide guide-ok";
+                    startCountdown(detection.descriptor);
+                } else {
+                    guide.className = "camera-guide guide-warn";
+                    let msg = !isCentered ? "Centra tu rostro" : (box.width < 110 ? "Acércate más" : "Aléjate un poco");
+                    resetTimer(msg);
+                }
+            }, 200);
         });
+
+        function startCountdown(descriptor) {
+            if (scanTimer) return; // Ya está corriendo
+
+            instructionMsg.innerText = "¡Mantente así! Escaneando...";
+            timerDisplay.style.display = "block";
+            
+            scanTimer = setInterval(() => {
+                secondsRemaining--;
+                timerDisplay.innerText = `Escaneando... ${secondsRemaining}s`;
+
+                if (secondsRemaining <= 0) {
+                    clearInterval(scanTimer);
+                    performMatch(descriptor);
+                }
+            }, 1000);
+        }
+
+        function resetTimer(msg) {
+            if (scanTimer) {
+                clearInterval(scanTimer);
+                scanTimer = null;
+            }
+            secondsRemaining = 5;
+            timerDisplay.style.display = "none";
+            timerDisplay.innerText = `Escaneando... 5s`;
+            instructionMsg.innerText = msg;
+            guide.className = "camera-guide";
+        }
+
+        function performMatch(descriptor) {
+            isProcessing = true;
+            timerDisplay.style.display = "none";
+            
+            const match = faceMatcher.findBestMatch(descriptor);
+            const confidence = Math.round((1 - match.distance) * 100);
+            
+            matchStatus.style.display = "block";
+            
+            if (match.label !== 'unknown') {
+                matchStatus.innerText = `VERIFICACIÓN EXITOSA: Similitud del ${confidence}%`;
+                matchStatus.className = "status match";
+                instructionMsg.innerText = "Identidad confirmada.";
+            } else {
+                matchStatus.innerText = `ERROR DE IDENTIDAD: Solo ${confidence}% de coincidencia`;
+                matchStatus.className = "status no-match";
+                instructionMsg.innerText = "La cara no coincide con el documento.";
+            }
+
+            // Opcional: Reiniciar después de 5 segundos para otra prueba
+            setTimeout(() => {
+                isProcessing = false;
+                matchStatus.style.display = "none";
+                resetTimer("Listo para un nuevo escaneo");
+            }, 8000);
+        }
     </script>
 </body>
 </html>
