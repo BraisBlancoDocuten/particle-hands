@@ -47,6 +47,22 @@
             min-height: 200px;
             width: 100%;
         }
+        /* Guía de centrado */
+        .camera-guide {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 180px; /* Tamaño del área óptima */
+            height: 220px;
+            border: 3px dashed rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .guide-ok { border-color: #00ff00; background: rgba(0, 255, 0, 0.1); }
+        .guide-warn { border-color: #ffcc00; }
 
         /* La imagen del DNI y el video deben comportarse igual */
         #ref-image, video {
@@ -76,6 +92,7 @@
             width: 100%;
             box-sizing: border-box;
         }
+        
 
         .match { background-color: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; }
         .no-match { background-color: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
@@ -104,13 +121,17 @@
             <div id="ref-status" class="status" style="display:none;"></div>
         </div>
 
-        <div class="card">
-            <h3>2. Validación Biométrica</h3>
-            <div class="media-wrapper" id="video-container">
-                <video id="video" width="320" height="240" autoplay muted></video>
-                </div>
-            <div id="match-status" class="status" style="display:none;">Esperando foto...</div>
-        </div>
+<div class="card">
+    <h3>2. Validación Biométrica</h3>
+    <div class="media-wrapper" id="video-container">
+        <video id="video" width="320" height="240" autoplay muted></video>
+        <div id="guide" class="camera-guide"></div>
+    </div>
+    <div id="instruction-msg" style="font-size: 0.8em; margin-top: 5px; color: #666;">
+        Centra tu cara en el círculo
+    </div>
+    <div id="match-status" class="status" style="display:none;">Esperando foto...</div>
+</div>
     </div>
 
     <script>
@@ -211,41 +232,86 @@
             const displaySize = { width: video.width, height: video.height };
             faceapi.matchDimensions(videoCanvas, displaySize);
 
-            setInterval(async () => {
-                const detections = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors();
-                const resizedDetections = faceapi.resizeResults(detections, displaySize);
-                
-                // Limpiar dibujo anterior
-                videoCanvas.getContext('2d').clearRect(0, 0, videoCanvas.width, videoCanvas.height);
+const guide = document.getElementById('guide');
+const instructionMsg = document.getElementById('instruction-msg');
 
-                if (!labeledFaceDescriptor || !faceMatcher) return;
+setInterval(async () => {
+    const detections = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors();
+    const resizedDetections = faceapi.resizeResults(detections, displaySize);
+    
+    videoCanvas.getContext('2d').clearRect(0, 0, videoCanvas.width, videoCanvas.height);
 
-                const results = resizedDetections.map(d => faceMatcher.findBestMatch(d.descriptor));
+    if (resizedDetections.length === 0) {
+        instructionMsg.innerText = "No se detecta rostro";
+        guide.className = "camera-guide";
+        return;
+    }
 
-                results.forEach((result, i) => {
-                    const box = resizedDetections[i].detection.box;
-                    const { label, distance } = result;
-                    
-                    let color = '#f00'; 
-                    let text = 'Desconocido';
+    const detection = resizedDetections[0]; // Trabajamos con la primera cara detectada
+    const box = detection.detection.box;
 
-                    if (label !== 'unknown') {
-                        color = '#0f0';
-                        // Invertimos la lógica: menor distancia = mayor similitud
-                        const confidence = Math.round((1 - distance) * 100);
-                        text = `Eres tú (${confidence}%)`;
-                        
-                        matchStatus.innerText = `IDENTIDAD VERIFICADA (${confidence}%)`;
-                        matchStatus.className = "status match";
-                    } else {
-                        matchStatus.innerText = "La persona no coincide con el DNI";
-                        matchStatus.className = "status no-match";
-                    }
+    // --- CÁLCULOS DE POSICIÓN Y DISTANCIA ---
+    const faceCenterX = box.x + box.width / 2;
+    const faceCenterY = box.y + box.height / 2;
+    
+    // El centro del video es (160, 120) para un ancho de 320x240
+    const videoCenterX = 160;
+    const videoCenterY = 120;
 
-                    const drawBox = new faceapi.draw.DrawBox(box, { label: text, boxColor: color });
-                    drawBox.draw(videoCanvas);
-                });
-            }, 100);
+    // 1. Validar Distancia (Por ancho de la caja)
+    const minWidth = 100; // Demasiado lejos
+    const maxWidth = 200; // Demasiado cerca
+    
+    // 2. Validar Centrado (Margen de error de 40px)
+    const isCentered = Math.abs(faceCenterX - videoCenterX) < 40 && 
+                       Math.abs(faceCenterY - videoCenterY) < 40;
+
+    const isGoodDistance = box.width > minWidth && box.width < maxWidth;
+
+    if (!isCentered) {
+        instructionMsg.innerText = "Mueve la cara al centro";
+        guide.className = "camera-guide guide-warn";
+        return;
+    } else if (box.width < minWidth) {
+        instructionMsg.innerText = "Acércate un poco más";
+        guide.className = "camera-guide guide-warn";
+        return;
+    } else if (box.width > maxWidth) {
+        instructionMsg.innerText = "Aléjate un poco";
+        guide.className = "camera-guide guide-warn";
+        return;
+    } else {
+        instructionMsg.innerText = "Posición perfecta. Validando...";
+        guide.className = "camera-guide guide-ok";
+    }
+
+    // --- CONTINUAR CON EL MATCH SI LA POSICIÓN ES CORRECTA ---
+    if (!labeledFaceDescriptor || !faceMatcher) return;
+
+    const result = faceMatcher.findBestMatch(detection.descriptor);
+    const { label, distance } = result;
+    
+    let color = '#f00'; 
+    let text = 'Desconocido';
+
+    if (label !== 'unknown') {
+        color = '#0f0';
+        const confidence = Math.round((1 - distance) * 100);
+        text = `Eres tú (${confidence}%)`;
+        
+        matchStatus.innerText = `IDENTIDAD VERIFICADA (${confidence}%)`;
+        matchStatus.className = "status match";
+        matchStatus.style.display = "block";
+    } else {
+        matchStatus.innerText = "No coincides con el DNI";
+        matchStatus.className = "status no-match";
+        matchStatus.style.display = "block";
+    }
+
+    const drawBox = new faceapi.draw.DrawBox(box, { label: text, boxColor: color });
+    drawBox.draw(videoCanvas);
+
+}, 100);
         });
     </script>
 </body>
