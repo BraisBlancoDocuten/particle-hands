@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Validador OpenAPI</title>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4/dist/js-yaml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ajv/8.17.1/ajv7.bundle.min.js"></script>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --card: #ffffff;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #16a34a;
+      --success-bg: #f0fdf4;
+      --error: #dc2626;
+      --error-bg: #fef2f2;
+      --warning: #f59e0b;
+      --warning-bg: #fffbeb;
+      --info: #6366f1;
+      --info-bg: #eef2ff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --gutter-bg: #f0f2f5;
+      --radius: 8px;
+      --mono: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+      --font-size: 0.82rem;
+      --line-height: 1.5;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+    }
+
+    header h1 { font-size: 1.4rem; font-weight: 700; color: var(--primary); }
+    header p { font-size: 0.85rem; color: var(--text-muted); margin-top: 2px; }
+
+    .container {
+      margin: 0;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .panel-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 12px;
+      background: var(--info-bg);
+      color: var(--info);
+    }
+
+    /* ===== Editor with line numbers ===== */
+
+    .editor-wrapper {
+      display: flex;
+      height: 300px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #fafbfc;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .editor-wrapper:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    .editor-wrapper.dragover {
+      border-color: var(--primary);
+      background: rgba(37, 99, 235, 0.03);
+    }
+
+    .line-numbers {
+      width: 48px;
+      padding: 12px 6px 12px 0;
+      text-align: right;
+      font-family: var(--mono);
+      font-size: var(--font-size);
+      line-height: var(--line-height);
+      color: #94a3b8;
+      background: var(--gutter-bg);
+      border-right: 1px solid var(--border);
+      overflow: hidden;
+      user-select: none;
+      flex-shrink: 0;
+      white-space: pre;
+    }
+
+    .editor-wrapper textarea {
+      flex: 1;
+      min-height: 0;
+      border: none;
+      border-radius: 0;
+      outline: none;
+      resize: none;
+      padding: 12px;
+      font-family: var(--mono);
+      font-size: var(--font-size);
+      line-height: var(--line-height);
+      color: var(--text);
+      background: transparent;
+      tab-size: 2;
+      white-space: pre;
+      overflow-wrap: normal;
+      overflow-x: auto;
+    }
+
+    .editor-wrapper textarea::placeholder { color: #94a3b8; }
+
+    /* ===== Controls ===== */
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-secondary:hover { background: #cbd5e1; }
+
+    select {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      background: white;
+      color: var(--text);
+      flex: 1;
+      min-width: 0;
+    }
+
+    select:focus { outline: none; border-color: var(--primary); }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary);
+    }
+
+    .load-options {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      align-items: center;
+    }
+
+    .load-options input[type="text"] {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: var(--font-size);
+      font-family: var(--mono);
+      color: var(--text);
+      min-width: 0;
+    }
+
+    .load-options input[type="text"]:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    .separator { font-size: 0.82rem; color: var(--text-muted); }
+
+    .endpoint-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      align-items: center;
+    }
+
+    .endpoint-row label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .status-msg {
+      font-size: 0.82rem;
+      margin-top: 8px;
+      padding: 6px 10px;
+      border-radius: var(--radius);
+    }
+
+    .status-msg.ok { background: var(--success-bg); color: var(--success); }
+    .status-msg.err { background: var(--error-bg); color: var(--error); }
+
+    /* ===== Results ===== */
+
+    .results { grid-column: 1 / -1; }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .results-count { font-size: 0.85rem; color: var(--text-muted); }
+
+    .result-card {
+      padding: 14px 16px;
+      border-radius: var(--radius);
+      margin-bottom: 8px;
+      border-left: 4px solid;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: opacity 0.1s;
+    }
+
+    .result-card:hover { opacity: 0.85; }
+
+    .result-card.error { background: var(--error-bg); border-color: var(--error); }
+    .result-card.success { background: var(--success-bg); border-color: var(--success); cursor: default; }
+    .result-card.success:hover { opacity: 1; }
+    .result-card.warning { background: var(--warning-bg); border-color: var(--warning); }
+    .result-card.info { background: var(--info-bg); border-color: var(--info); }
+
+    .result-header {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+
+    .result-path {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      word-break: break-all;
+    }
+
+    .result-line {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--primary);
+      background: rgba(37, 99, 235, 0.08);
+      padding: 1px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    .result-message { font-weight: 500; }
+
+    .result-detail {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .result-icon {
+      display: inline-block;
+      width: 18px;
+      text-align: center;
+      margin-right: 4px;
+    }
+
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+      .results { grid-column: 1; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Validador OpenAPI</h1>
+    <p>Valida peticiones JSON contra una especificacion OpenAPI 3.x sin necesidad de enviar la peticion</p>
+  </header>
+
+  <div class="container">
+    <div class="panel">
+      <div class="panel-title">
+        Especificacion OpenAPI
+        <span id="specBadge" class="badge" style="display:none"></span>
+      </div>
+      <div class="load-options">
+        <button class="btn-secondary" id="btnLoadFile">Cargar fichero</button>
+        <input type="file" id="fileInput" accept=".yaml,.yml,.json" style="display:none">
+        <span class="separator">o</span>
+        <input type="text" id="specUrl" placeholder="https://ejemplo.com/openapi.yaml">
+        <button class="btn-secondary" id="btnLoadUrl">Cargar URL</button>
+      </div>
+      <div class="editor-wrapper" id="specDropZone">
+        <div class="line-numbers" id="specLines">1</div>
+        <textarea id="specInput" placeholder="Pega aquí tu especificación OpenAPI (YAML o JSON), o usa las opciones de arriba..."></textarea>
+      </div>
+      <div id="specStatus"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Peticion JSON</div>
+      <div class="endpoint-row">
+        <label>Endpoint:</label>
+        <select id="endpointSelect" disabled>
+          <option value="">-- Carga una especificacion --</option>
+        </select>
+      </div>
+      <div class="editor-wrapper" id="jsonDropZone">
+        <div class="line-numbers" id="jsonLines">1</div>
+        <textarea id="jsonInput" placeholder="Pega aquí el JSON de la petición..."></textarea>
+      </div>
+      <div class="toolbar">
+        <button class="btn-primary" id="btnValidate" disabled>Validar</button>
+        <button class="btn-secondary" id="btnFormat">Formatear JSON</button>
+        <label class="checkbox-label">
+          <input type="checkbox" id="chkStrict" checked>
+          Detectar propiedades desconocidas
+        </label>
+      </div>
+    </div>
+
+    <div class="panel results" id="resultsPanel" style="display:none">
+      <div class="results-header">
+        <div class="panel-title" style="margin-bottom:0">Resultados</div>
+        <span class="results-count" id="resultsCount"></span>
+      </div>
+      <div id="resultsBody"></div>
+    </div>
+  </div>
+
+  <script>
+    // ========== State ==========
+    var parsedSpec = null;
+    var endpoints = [];
+
+    // ========== DOM refs ==========
+    var specInput = document.getElementById('specInput');
+    var specLinesEl = document.getElementById('specLines');
+    var jsonInput = document.getElementById('jsonInput');
+    var jsonLinesEl = document.getElementById('jsonLines');
+    var endpointSelect = document.getElementById('endpointSelect');
+    var btnLoadFile = document.getElementById('btnLoadFile');
+    var fileInput = document.getElementById('fileInput');
+    var specUrl = document.getElementById('specUrl');
+    var btnLoadUrl = document.getElementById('btnLoadUrl');
+    var btnValidate = document.getElementById('btnValidate');
+    var btnFormat = document.getElementById('btnFormat');
+    var chkStrict = document.getElementById('chkStrict');
+    var specBadge = document.getElementById('specBadge');
+    var specStatus = document.getElementById('specStatus');
+    var resultsPanel = document.getElementById('resultsPanel');
+    var resultsBody = document.getElementById('resultsBody');
+    var resultsCount = document.getElementById('resultsCount');
+
+    // ========== Line numbers ==========
+
+    function updateLineNumbers(textarea, gutterEl) {
+      var count = textarea.value.split('\n').length;
+      var nums = [];
+      for (var i = 1; i <= count; i++) nums.push(i);
+      gutterEl.textContent = nums.join('\n');
+      gutterEl.scrollTop = textarea.scrollTop;
+    }
+
+    function setupEditor(textarea, gutterEl) {
+      updateLineNumbers(textarea, gutterEl);
+      textarea.addEventListener('input', function() {
+        updateLineNumbers(textarea, gutterEl);
+      });
+      textarea.addEventListener('scroll', function() {
+        gutterEl.scrollTop = textarea.scrollTop;
+      });
+    }
+
+    setupEditor(specInput, specLinesEl);
+    setupEditor(jsonInput, jsonLinesEl);
+
+    // ========== Utilities ==========
+
+    function deepClone(obj) {
+      return JSON.parse(JSON.stringify(obj));
+    }
+
+    function lookupRef(refPath, root) {
+      var parts = refPath.replace(/^#\//, '').split('/');
+      var current = root;
+      for (var i = 0; i < parts.length; i++) {
+        if (current == null || typeof current !== 'object') return undefined;
+        current = current[parts[i]];
+      }
+      return current;
+    }
+
+    // ========== $ref Resolution ==========
+
+    function resolveRefs(schema, root, seen) {
+      if (!seen) seen = new Set();
+      if (!schema || typeof schema !== 'object') return schema;
+      if (Array.isArray(schema)) return schema.map(function(s) { return resolveRefs(s, root, new Set(seen)); });
+
+      if (schema.$ref) {
+        var refPath = schema.$ref;
+        if (seen.has(refPath)) return { type: 'object' };
+        seen.add(refPath);
+        var resolved = lookupRef(refPath, root);
+        if (!resolved) return schema;
+        return resolveRefs(deepClone(resolved), root, new Set(seen));
+      }
+
+      var result = {};
+      for (var key in schema) {
+        if (!schema.hasOwnProperty(key)) continue;
+        var value = schema[key];
+        if (['allOf', 'oneOf', 'anyOf'].indexOf(key) !== -1 && Array.isArray(value)) {
+          result[key] = value.map(function(s) { return resolveRefs(s, root, new Set(seen)); });
+        } else if (key === 'properties' && typeof value === 'object') {
+          result[key] = {};
+          for (var propName in value) {
+            if (value.hasOwnProperty(propName)) {
+              result[key][propName] = resolveRefs(value[propName], root, new Set(seen));
+            }
+          }
+        } else if (key === 'items' && typeof value === 'object') {
+          result[key] = resolveRefs(value, root, new Set(seen));
+        } else if (key === 'additionalProperties' && typeof value === 'object') {
+          result[key] = resolveRefs(value, root, new Set(seen));
+        } else {
+          result[key] = value;
+        }
+      }
+
+      if (result.nullable === true && result.type) {
+        result.type = [result.type, 'null'];
+        delete result.nullable;
+      }
+
+      return result;
+    }
+
+    // ========== allOf Flattening ==========
+
+    function flattenAllOf(schema) {
+      if (!schema || typeof schema !== 'object') return schema;
+      if (Array.isArray(schema)) return schema.map(flattenAllOf);
+
+      var result = Object.assign({}, schema);
+
+      if (result.properties) {
+        var newProps = {};
+        for (var k in result.properties) {
+          if (result.properties.hasOwnProperty(k)) newProps[k] = flattenAllOf(result.properties[k]);
+        }
+        result.properties = newProps;
+      }
+      if (result.items) result.items = flattenAllOf(result.items);
+      if (result.additionalProperties && typeof result.additionalProperties === 'object') {
+        result.additionalProperties = flattenAllOf(result.additionalProperties);
+      }
+      ['oneOf', 'anyOf'].forEach(function(kw) {
+        if (Array.isArray(result[kw])) result[kw] = result[kw].map(flattenAllOf);
+      });
+
+      if (Array.isArray(result.allOf)) {
+        var merged = { type: 'object', properties: {}, required: [] };
+        if (result.type) merged.type = result.type;
+        if (result.properties) Object.assign(merged.properties, result.properties);
+        if (result.required) merged.required = merged.required.concat(result.required);
+
+        result.allOf.forEach(function(sub) {
+          sub = flattenAllOf(sub);
+          if (sub.properties) Object.assign(merged.properties, sub.properties);
+          if (sub.required) merged.required = merged.required.concat(sub.required);
+          if (sub.type) merged.type = sub.type;
+          for (var mk in sub) {
+            if (sub.hasOwnProperty(mk) && ['properties', 'required', 'type', 'allOf'].indexOf(mk) === -1) {
+              merged[mk] = sub[mk];
+            }
+          }
+        });
+
+        for (var rk in result) {
+          if (result.hasOwnProperty(rk) && ['properties', 'required', 'type', 'allOf'].indexOf(rk) === -1) {
+            if (!(rk in merged)) merged[rk] = result[rk];
+          }
+        }
+
+        merged.required = merged.required.filter(function(v, i, a) { return a.indexOf(v) === i; });
+        if (merged.required.length === 0) delete merged.required;
+        if (Object.keys(merged.properties).length === 0) delete merged.properties;
+        result = merged;
+      }
+
+      return result;
+    }
+
+    // ========== Inject additionalProperties ==========
+
+    function injectAdditionalProperties(schema) {
+      if (!schema || typeof schema !== 'object') return schema;
+      if (Array.isArray(schema)) return schema.map(injectAdditionalProperties);
+
+      var result = Object.assign({}, schema);
+
+      if (result.properties && !('additionalProperties' in result)) {
+        result.additionalProperties = false;
+      }
+
+      if (result.properties) {
+        var np = {};
+        for (var k in result.properties) {
+          if (result.properties.hasOwnProperty(k)) np[k] = injectAdditionalProperties(result.properties[k]);
+        }
+        result.properties = np;
+      }
+      if (result.items) result.items = injectAdditionalProperties(result.items);
+      ['allOf', 'oneOf', 'anyOf'].forEach(function(kw) {
+        if (Array.isArray(result[kw])) result[kw] = result[kw].map(injectAdditionalProperties);
+      });
+      if (result.additionalProperties && typeof result.additionalProperties === 'object' && result.additionalProperties !== false) {
+        result.additionalProperties = injectAdditionalProperties(result.additionalProperties);
+      }
+
+      return result;
+    }
+
+    // ========== Spec Parsing ==========
+
+    function parseSpec(text) {
+      var spec;
+      try {
+        spec = JSON.parse(text);
+      } catch (e1) {
+        try {
+          spec = jsyaml.load(text);
+        } catch (e2) {
+          throw new Error('No se pudo parsear como JSON ni como YAML: ' + e2.message);
+        }
+      }
+      if (!spec || typeof spec !== 'object') throw new Error('La especificación no es un objeto válido');
+      if (!spec.openapi && !spec.swagger) throw new Error('No se encontró la clave "openapi" o "swagger"');
+      return spec;
+    }
+
+    function extractEndpoints(spec) {
+      var result = [];
+      var paths = spec.paths || {};
+      var methods = ['get', 'post', 'put', 'patch', 'delete'];
+
+      for (var path in paths) {
+        if (!paths.hasOwnProperty(path)) continue;
+        methods.forEach(function(method) {
+          var op = paths[path][method];
+          if (!op || !op.requestBody || !op.requestBody.content) return;
+          var jsonContent = op.requestBody.content['application/json'];
+          if (!jsonContent || !jsonContent.schema) return;
+          result.push({
+            path: path,
+            method: method.toUpperCase(),
+            operationId: op.operationId || '',
+            summary: op.summary || '',
+            schema: jsonContent.schema
+          });
+        });
+      }
+      return result;
+    }
+
+    // ========== Ajv Setup ==========
+
+    function createAjv() {
+      var Ajv = window.ajv7 ? (window.ajv7.default || window.ajv7) : null;
+      if (!Ajv) throw new Error('Ajv no esta cargado');
+
+      var ajv = new Ajv({ allErrors: true, strict: false, verbose: true });
+
+      ajv.addFormat('date-time', { validate: function(s) { return !isNaN(Date.parse(s)); } });
+      ajv.addFormat('int32', { type: 'number', validate: function(n) { return Number.isInteger(n) && n >= -2147483648 && n <= 2147483647; } });
+      ajv.addFormat('int64', { type: 'number', validate: function(n) { return Number.isInteger(n); } });
+      ajv.addFormat('uri', { validate: function(s) { try { new URL(s); return true; } catch(e) { return false; } } });
+      ajv.addFormat('email', { validate: function(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s); } });
+
+      return ajv;
+    }
+
+    // ========== JSON Path to Line Number ==========
+
+    function findLineForPath(jsonText, path) {
+      if (!path || path === '/') return null;
+      var segments = path.split('/').filter(Boolean);
+      var pos = 0;
+
+      for (var s = 0; s < segments.length; s++) {
+        var seg = segments[s];
+
+        if (/^\d+$/.test(seg)) {
+          // Array index: find opening '[', then skip to the nth element
+          var targetIdx = parseInt(seg);
+          var bracketPos = jsonText.indexOf('[', pos);
+          if (bracketPos === -1) return null;
+          pos = bracketPos + 1;
+
+          if (targetIdx === 0) {
+            // Skip whitespace after '['
+            while (pos < jsonText.length && /\s/.test(jsonText[pos])) pos++;
+          } else {
+            var depth = 0;
+            var inStr = false;
+            var esc = false;
+            var elemCount = 0;
+            for (var j = pos; j < jsonText.length; j++) {
+              var c = jsonText[j];
+              if (inStr) {
+                if (esc) { esc = false; continue; }
+                if (c === '\\') { esc = true; continue; }
+                if (c === '"') inStr = false;
+                continue;
+              }
+              if (c === '"') { inStr = true; continue; }
+              if (c === '{' || c === '[') depth++;
+              if (c === '}' || c === ']') {
+                if (depth === 0) break;
+                depth--;
+              }
+              if (c === ',' && depth === 0) {
+                elemCount++;
+                if (elemCount === targetIdx) {
+                  pos = j + 1;
+                  while (pos < jsonText.length && /\s/.test(jsonText[pos])) pos++;
+                  break;
+                }
+              }
+            }
+            if (elemCount < targetIdx) return null;
+          }
+        } else {
+          // Object key: find "seg": from current position
+          var needle = '"' + seg + '"';
+          var found = jsonText.indexOf(needle, pos);
+          if (found === -1) return null;
+          pos = found;
+        }
+      }
+
+      // Count line number at pos
+      var line = 1;
+      for (var k = 0; k < pos && k < jsonText.length; k++) {
+        if (jsonText[k] === '\n') line++;
+      }
+      return line;
+    }
+
+    // ========== Validation Pipeline ==========
+
+    function validateRequest(rawSchema, jsonText, strict) {
+      var data;
+      try {
+        data = JSON.parse(jsonText);
+      } catch (e) {
+        // Try to extract line/column from error message
+        var lineMatch = e.message.match(/position (\d+)/);
+        var errLine = null;
+        if (lineMatch) {
+          var errPos = parseInt(lineMatch[1]);
+          errLine = 1;
+          for (var i = 0; i < errPos && i < jsonText.length; i++) {
+            if (jsonText[i] === '\n') errLine++;
+          }
+        }
+        return [{
+          type: 'error',
+          keyword: 'parse',
+          path: '/',
+          line: errLine,
+          message: 'JSON inválido',
+          detail: e.message
+        }];
+      }
+
+      // Pretty-print and update textarea for consistent line number mapping
+      var formatted = JSON.stringify(data, null, 2);
+      jsonInput.value = formatted;
+      updateLineNumbers(jsonInput, jsonLinesEl);
+
+      var schema = resolveRefs(deepClone(rawSchema), parsedSpec, new Set());
+      schema = flattenAllOf(schema);
+      if (strict) schema = injectAdditionalProperties(schema);
+
+      var ajv = createAjv();
+      var validate;
+      try {
+        validate = ajv.compile(schema);
+      } catch (e) {
+        return [{ type: 'warning', keyword: 'schema', path: '/', line: null, message: 'Error al compilar el schema', detail: e.message }];
+      }
+
+      var valid = validate(data);
+      if (valid) return [];
+
+      return (validate.errors || []).map(function(err) {
+        var result = formatError(err);
+        result.line = findLineForPath(formatted, result.path);
+        return result;
+      });
+    }
+
+    // ========== Error Formatting ==========
+
+    function formatError(err) {
+      var path = err.instancePath || '/';
+      var message = '';
+      var detail = '';
+      var type = 'error';
+
+      switch (err.keyword) {
+        case 'required':
+          message = 'Campo requerido faltante: "' + err.params.missingProperty + '"';
+          break;
+        case 'type':
+          message = 'Tipo incorrecto: se esperaba ' + formatType(err.params.type);
+          detail = 'Valor recibido: ' + JSON.stringify(err.data);
+          break;
+        case 'enum':
+          message = 'Valor no permitido: "' + err.data + '"';
+          detail = 'Valores validos: ' + err.params.allowedValues.join(', ');
+          break;
+        case 'additionalProperties':
+          message = 'Propiedad desconocida: "' + err.params.additionalProperty + '"';
+          detail = 'Este campo no existe en la especificación';
+          type = 'warning';
+          break;
+        case 'minItems':
+          message = 'El array debe tener al menos ' + err.params.limit + ' elemento(s)';
+          break;
+        case 'maxLength':
+          message = 'La cadena excede el largo máximo de ' + err.params.limit + ' caracteres';
+          break;
+        case 'minLength':
+          message = 'La cadena debe tener al menos ' + err.params.limit + ' caracter(es)';
+          break;
+        case 'format':
+          message = 'Formato invalido: se esperaba "' + err.params.format + '"';
+          detail = 'Valor recibido: "' + err.data + '"';
+          break;
+        case 'minimum':
+        case 'maximum':
+        case 'exclusiveMinimum':
+        case 'exclusiveMaximum':
+          message = 'Valor fuera de rango (' + err.keyword + ': ' + err.params.limit + ')';
+          detail = 'Valor recibido: ' + err.data;
+          break;
+        case 'pattern':
+          message = 'El valor no cumple el patrón requerido';
+          detail = 'Patrón: ' + err.params.pattern;
+          break;
+        case 'const':
+          message = 'El valor debe ser: ' + JSON.stringify(err.params.allowedValue);
+          break;
+        default:
+          message = err.message || 'Error de validacion (' + err.keyword + ')';
+          if (err.params) detail = JSON.stringify(err.params);
+      }
+
+      return { type: type, keyword: err.keyword, path: path, line: null, message: message, detail: detail };
+    }
+
+    function formatType(type) {
+      if (Array.isArray(type)) return type.map(formatType).join(' o ');
+      var map = {
+        string: 'string (cadena)', integer: 'integer (entero)', number: 'number (numero)',
+        boolean: 'boolean (booleano)', object: 'object (objeto)', array: 'array (lista)', null: 'null'
+      };
+      return map[type] || type;
+    }
+
+    // ========== UI Rendering ==========
+
+    function showSpecStatus(text, ok) {
+      specStatus.innerHTML = '<div class="status-msg ' + (ok ? 'ok' : 'err') + '">' + escapeHtml(text) + '</div>';
+    }
+
+    function renderResults(errors) {
+      resultsPanel.style.display = '';
+
+      if (errors.length === 0) {
+        resultsCount.textContent = '';
+        resultsBody.innerHTML =
+          '<div class="result-card success">' +
+            '<span class="result-icon">&#10004;</span>' +
+            '<span class="result-message">La petición es válida según la especificación OpenAPI</span>' +
+          '</div>';
+        return;
+      }
+
+      var errorCount = errors.filter(function(e) { return e.type === 'error'; }).length;
+      var warnCount = errors.filter(function(e) { return e.type === 'warning'; }).length;
+      var parts = [];
+      if (errorCount > 0) parts.push(errorCount + ' error(es)');
+      if (warnCount > 0) parts.push(warnCount + ' advertencia(s)');
+      resultsCount.textContent = parts.join(', ');
+
+      resultsBody.innerHTML = errors.map(function(err) {
+        var icon = err.type === 'error' ? '&#10008;' : '&#9888;';
+        var lineHtml = err.line ? '<span class="result-line">linea ' + err.line + '</span>' : '';
+        var detailHtml = err.detail ? '<div class="result-detail">' + escapeHtml(err.detail) + '</div>' : '';
+        return '<div class="result-card ' + err.type + '" data-line="' + (err.line || '') + '">' +
+          '<div class="result-header">' +
+            '<span class="result-path">' + escapeHtml(err.path) + '</span>' +
+            lineHtml +
+          '</div>' +
+          '<div class="result-message">' +
+            '<span class="result-icon">' + icon + '</span>' +
+            escapeHtml(err.message) +
+          '</div>' +
+          detailHtml +
+        '</div>';
+      }).join('');
+
+      // Click on error card scrolls to that line in JSON textarea
+      resultsBody.querySelectorAll('.result-card[data-line]').forEach(function(card) {
+        card.addEventListener('click', function() {
+          var line = parseInt(card.getAttribute('data-line'));
+          if (!line) return;
+          scrollToLine(jsonInput, jsonLinesEl, line);
+        });
+      });
+    }
+
+    function scrollToLine(textarea, gutterEl, line) {
+      var lines = textarea.value.split('\n');
+      if (line < 1 || line > lines.length) return;
+
+      // Calculate scroll position based on line height
+      var lineHeight = parseFloat(getComputedStyle(textarea).lineHeight);
+      var targetScroll = (line - 1) * lineHeight - textarea.clientHeight / 3;
+      textarea.scrollTop = Math.max(0, targetScroll);
+      gutterEl.scrollTop = textarea.scrollTop;
+
+      // Select the line
+      var start = 0;
+      for (var i = 0; i < line - 1; i++) start += lines[i].length + 1;
+      var end = start + lines[line - 1].length;
+      textarea.focus();
+      textarea.setSelectionRange(start, end);
+    }
+
+    function escapeHtml(text) {
+      var div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ========== Load Spec ==========
+
+    function loadSpec() {
+      var text = specInput.value.trim();
+      if (!text) {
+        parsedSpec = null;
+        endpoints = [];
+        endpointSelect.innerHTML = '<option value="">-- Carga una especificacion --</option>';
+        endpointSelect.disabled = true;
+        btnValidate.disabled = true;
+        specBadge.style.display = 'none';
+        specStatus.innerHTML = '';
+        return;
+      }
+
+      try {
+        parsedSpec = parseSpec(text);
+        endpoints = extractEndpoints(parsedSpec);
+
+        endpointSelect.innerHTML = '';
+        if (endpoints.length === 0) {
+          endpointSelect.innerHTML = '<option value="">-- No se encontraron endpoints con requestBody --</option>';
+          endpointSelect.disabled = true;
+          btnValidate.disabled = true;
+          showSpecStatus('Spec cargada pero no se encontraron endpoints con requestBody', false);
+          return;
+        }
+
+        endpoints.forEach(function(ep, i) {
+          var opt = document.createElement('option');
+          opt.value = i;
+          opt.textContent = ep.method + ' ' + ep.path + (ep.summary ? ' - ' + ep.summary : '');
+          endpointSelect.appendChild(opt);
+        });
+
+        endpointSelect.disabled = false;
+        btnValidate.disabled = false;
+
+        var version = parsedSpec.openapi || parsedSpec.swagger || '?';
+        specBadge.textContent = 'v' + version + ' - ' + endpoints.length + ' endpoint(s)';
+        specBadge.style.display = '';
+
+        showSpecStatus('Especificacion cargada. ' + endpoints.length + ' endpoint(s) con requestBody.', true);
+      } catch (e) {
+        showSpecStatus(e.message, false);
+        parsedSpec = null;
+        endpoints = [];
+        endpointSelect.innerHTML = '<option value="">-- Carga una especificación --</option>';
+        endpointSelect.disabled = true;
+        btnValidate.disabled = true;
+        specBadge.style.display = 'none';
+      }
+    }
+
+    // ========== Auto-parse on paste ==========
+
+    var parseTimer = null;
+    specInput.addEventListener('input', function() {
+      clearTimeout(parseTimer);
+      parseTimer = setTimeout(loadSpec, 600);
+    });
+
+    // ========== Load from file ==========
+
+    btnLoadFile.addEventListener('click', function() { fileInput.click(); });
+
+    fileInput.addEventListener('change', function(e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        specInput.value = ev.target.result;
+        updateLineNumbers(specInput, specLinesEl);
+        loadSpec();
+      };
+      reader.readAsText(file);
+      fileInput.value = '';
+    });
+
+    // ========== Load from URL ==========
+
+    function fetchWithCorsFallback(url) {
+      return fetch(url).then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + res.statusText);
+        return res.text();
+      }).catch(function() {
+        var proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+        return fetch(proxyUrl).then(function(res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status + ' (via proxy)');
+          return res.text();
+        });
+      });
+    }
+
+    btnLoadUrl.addEventListener('click', function() {
+      var url = specUrl.value.trim();
+      if (!url) { showSpecStatus('Introduce una URL', false); return; }
+      btnLoadUrl.disabled = true;
+      btnLoadUrl.textContent = 'Cargando...';
+      fetchWithCorsFallback(url)
+        .then(function(text) {
+          specInput.value = text;
+          updateLineNumbers(specInput, specLinesEl);
+          loadSpec();
+        })
+        .catch(function(e) { showSpecStatus('Error al descargar: ' + e.message, false); })
+        .finally(function() { btnLoadUrl.disabled = false; btnLoadUrl.textContent = 'Cargar URL'; });
+    });
+
+    specUrl.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); btnLoadUrl.click(); }
+    });
+
+    // ========== Validate & Format ==========
+
+    btnValidate.addEventListener('click', function() {
+      var idx = endpointSelect.value;
+      if (idx === '' || !endpoints[idx]) return;
+      var jsonText = jsonInput.value.trim();
+      if (!jsonText) {
+        renderResults([{ type: 'error', keyword: 'empty', path: '/', line: null, message: 'El JSON de la petición esta vacío', detail: '' }]);
+        return;
+      }
+      var errors = validateRequest(endpoints[idx].schema, jsonText, chkStrict.checked);
+      renderResults(errors);
+    });
+
+    btnFormat.addEventListener('click', function() {
+      try {
+        var parsed = JSON.parse(jsonInput.value);
+        jsonInput.value = JSON.stringify(parsed, null, 2);
+        updateLineNumbers(jsonInput, jsonLinesEl);
+      } catch (e) {
+        renderResults([{ type: 'error', keyword: 'parse', path: '/', line: null, message: 'JSON inválido - no se puede formatear', detail: e.message }]);
+      }
+    });
+
+    // ========== Drag and drop ==========
+
+    ['specDropZone', 'jsonDropZone'].forEach(function(zoneId, i) {
+      var textareaEl = i === 0 ? specInput : jsonInput;
+      var gutterEl = i === 0 ? specLinesEl : jsonLinesEl;
+      var zone = document.getElementById(zoneId);
+
+      zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('dragover'); });
+      zone.addEventListener('dragleave', function() { zone.classList.remove('dragover'); });
+      zone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        var file = e.dataTransfer.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function(ev) {
+          textareaEl.value = ev.target.result;
+          updateLineNumbers(textareaEl, gutterEl);
+          if (i === 0) loadSpec();
+        };
+        reader.readAsText(file);
+      });
+    });
+
+    // Ctrl+Enter to validate
+    document.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (!btnValidate.disabled) btnValidate.click();
+      }
+    });
+  </script>
+</body>
+</html>
