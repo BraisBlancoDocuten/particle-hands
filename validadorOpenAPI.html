@@ -327,13 +327,13 @@
 <body>
   <header>
     <h1>Validador OpenAPI</h1>
-    <p>Valida peticiones JSON contra una especificacion OpenAPI 3.x sin necesidad de enviar la peticion</p>
+    <p>Valida peticiones JSON contra una especificación OpenAPI 3.x sin necesidad de enviar la petición</p>
   </header>
 
   <div class="container">
     <div class="panel">
       <div class="panel-title">
-        Especificacion OpenAPI
+        Especificación OpenAPI
         <span id="specBadge" class="badge" style="display:none"></span>
       </div>
       <div class="load-options">
@@ -351,11 +351,11 @@
     </div>
 
     <div class="panel">
-      <div class="panel-title">Peticion JSON</div>
+      <div class="panel-title">Petición JSON</div>
       <div class="endpoint-row">
         <label>Endpoint:</label>
         <select id="endpointSelect" disabled>
-          <option value="">-- Carga una especificacion --</option>
+          <option value="">-- Carga una especificación --</option>
         </select>
       </div>
       <div class="editor-wrapper" id="jsonDropZone">
@@ -622,7 +622,7 @@
 
     function createAjv() {
       var Ajv = window.ajv7 ? (window.ajv7.default || window.ajv7) : null;
-      if (!Ajv) throw new Error('Ajv no esta cargado');
+      if (!Ajv) throw new Error('Ajv no está cargado');
 
       var ajv = new Ajv({ allErrors: true, strict: false, verbose: true });
 
@@ -774,7 +774,7 @@
           break;
         case 'enum':
           message = 'Valor no permitido: "' + err.data + '"';
-          detail = 'Valores validos: ' + err.params.allowedValues.join(', ');
+          detail = 'Valores válidos: ' + err.params.allowedValues.join(', ');
           break;
         case 'additionalProperties':
           message = 'Propiedad desconocida: "' + err.params.additionalProperty + '"';
@@ -791,7 +791,7 @@
           message = 'La cadena debe tener al menos ' + err.params.limit + ' caracter(es)';
           break;
         case 'format':
-          message = 'Formato invalido: se esperaba "' + err.params.format + '"';
+          message = 'Formato inválido: se esperaba "' + err.params.format + '"';
           detail = 'Valor recibido: "' + err.data + '"';
           break;
         case 'minimum':
@@ -809,7 +809,7 @@
           message = 'El valor debe ser: ' + JSON.stringify(err.params.allowedValue);
           break;
         default:
-          message = err.message || 'Error de validacion (' + err.keyword + ')';
+          message = err.message || 'Error de validación (' + err.keyword + ')';
           if (err.params) detail = JSON.stringify(err.params);
       }
 
@@ -819,7 +819,7 @@
     function formatType(type) {
       if (Array.isArray(type)) return type.map(formatType).join(' o ');
       var map = {
-        string: 'string (cadena)', integer: 'integer (entero)', number: 'number (numero)',
+        string: 'string (cadena)', integer: 'integer (entero)', number: 'number (número)',
         boolean: 'boolean (booleano)', object: 'object (objeto)', array: 'array (lista)', null: 'null'
       };
       return map[type] || type;
@@ -853,7 +853,7 @@
 
       resultsBody.innerHTML = errors.map(function(err) {
         var icon = err.type === 'error' ? '&#10008;' : '&#9888;';
-        var lineHtml = err.line ? '<span class="result-line">linea ' + err.line + '</span>' : '';
+        var lineHtml = err.line ? '<span class="result-line">línea ' + err.line + '</span>' : '';
         var detailHtml = err.detail ? '<div class="result-detail">' + escapeHtml(err.detail) + '</div>' : '';
         return '<div class="result-card ' + err.type + '" data-line="' + (err.line || '') + '">' +
           '<div class="result-header">' +
@@ -909,7 +909,7 @@
       if (!text) {
         parsedSpec = null;
         endpoints = [];
-        endpointSelect.innerHTML = '<option value="">-- Carga una especificacion --</option>';
+        endpointSelect.innerHTML = '<option value="">-- Carga una especificación --</option>';
         endpointSelect.disabled = true;
         btnValidate.disabled = true;
         specBadge.style.display = 'none';
@@ -944,7 +944,7 @@
         specBadge.textContent = 'v' + version + ' - ' + endpoints.length + ' endpoint(s)';
         specBadge.style.display = '';
 
-        showSpecStatus('Especificacion cargada. ' + endpoints.length + ' endpoint(s) con requestBody.', true);
+        showSpecStatus('Especificación cargada. ' + endpoints.length + ' endpoint(s) con requestBody.', true);
       } catch (e) {
         showSpecStatus(e.message, false);
         parsedSpec = null;
@@ -984,15 +984,28 @@
     // ========== Load from URL ==========
 
     function fetchWithCorsFallback(url) {
+      var proxies = [
+        function(u) { return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u); },
+        function(u) { return 'https://corsproxy.io/?' + encodeURIComponent(u); },
+        function(u) { return 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u); }
+      ];
+
+      // Try direct fetch first
       return fetch(url).then(function(res) {
-        if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + res.statusText);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.text();
       }).catch(function() {
-        var proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-        return fetch(proxyUrl).then(function(res) {
-          if (!res.ok) throw new Error('HTTP ' + res.status + ' (via proxy)');
-          return res.text();
-        });
+        // Direct failed, try proxies in sequence
+        return proxies.reduce(function(chain, proxyFn) {
+          return chain.catch(function() {
+            return fetch(proxyFn(url)).then(function(res) {
+              if (!res.ok) throw new Error('HTTP ' + res.status);
+              return res.text();
+            });
+          });
+        }, Promise.reject());
+      }).catch(function() {
+        throw new Error('No se pudo descargar. El servidor puede no permitir CORS. Prueba a descargar el fichero manualmente y usa "Cargar fichero".');
       });
     }
 
@@ -1022,7 +1035,7 @@
       if (idx === '' || !endpoints[idx]) return;
       var jsonText = jsonInput.value.trim();
       if (!jsonText) {
-        renderResults([{ type: 'error', keyword: 'empty', path: '/', line: null, message: 'El JSON de la petición esta vacío', detail: '' }]);
+        renderResults([{ type: 'error', keyword: 'empty', path: '/', line: null, message: 'El JSON de la petición está vacío', detail: '' }]);
         return;
       }
       var errors = validateRequest(endpoints[idx].schema, jsonText, chkStrict.checked);
