@@ -119,7 +119,26 @@
       overflow: hidden;
       user-select: none;
       flex-shrink: 0;
-      white-space: pre;
+    }
+
+    .line-numbers .ln {
+      padding-right: 2px;
+    }
+
+    .line-numbers .ln-error {
+      background: var(--error);
+      color: white;
+      font-weight: 600;
+      border-radius: 2px;
+      padding-right: 2px;
+    }
+
+    .line-numbers .ln-warning {
+      background: var(--warning);
+      color: white;
+      font-weight: 600;
+      border-radius: 2px;
+      padding-right: 2px;
     }
 
     .editor-wrapper textarea {
@@ -407,12 +426,32 @@
 
     // ========== Line numbers ==========
 
-    function updateLineNumbers(textarea, gutterEl) {
+    function updateLineNumbers(textarea, gutterEl, marks) {
       var count = textarea.value.split('\n').length;
-      var nums = [];
-      for (var i = 1; i <= count; i++) nums.push(i);
-      gutterEl.textContent = nums.join('\n');
+      var html = '';
+      for (var i = 1; i <= count; i++) {
+        var cls = 'ln';
+        if (marks && marks[i]) cls = 'ln ln-' + marks[i];
+        html += '<div class="' + cls + '">' + i + '</div>';
+      }
+      gutterEl.innerHTML = html;
       gutterEl.scrollTop = textarea.scrollTop;
+    }
+
+    function highlightErrorLines(gutterEl, errors) {
+      // Build a map of line -> worst severity (error > warning)
+      var marks = {};
+      errors.forEach(function(err) {
+        if (!err.line) return;
+        if (!marks[err.line] || err.type === 'error') {
+          marks[err.line] = err.type;
+        }
+      });
+      var divs = gutterEl.querySelectorAll('.ln');
+      divs.forEach(function(div) {
+        var num = parseInt(div.textContent);
+        div.className = marks[num] ? 'ln ln-' + marks[num] : 'ln';
+      });
     }
 
     function setupEditor(textarea, gutterEl) {
@@ -751,7 +790,11 @@
 
       return (validate.errors || []).map(function(err) {
         var result = formatError(err);
-        result.line = findLineForPath(formatted, result.path);
+        var linePath = result.path;
+        if (err.keyword === 'additionalProperties' && err.params.additionalProperty) {
+          linePath = result.path + '/' + err.params.additionalProperty;
+        }
+        result.line = findLineForPath(formatted, linePath);
         return result;
       });
     }
@@ -1040,6 +1083,7 @@
       }
       var errors = validateRequest(endpoints[idx].schema, jsonText, chkStrict.checked);
       renderResults(errors);
+      highlightErrorLines(jsonLinesEl, errors);
     });
 
     btnFormat.addEventListener('click', function() {
