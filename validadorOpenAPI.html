@@ -383,7 +383,7 @@
       </div>
       <div class="toolbar">
         <button class="btn-primary" id="btnValidate" disabled>Validar</button>
-        <button class="btn-secondary" id="btnFormat">Formatear JSON</button>
+        <button class="btn-secondary" id="btnFormat" disabled>Formatear JSON</button>
         <label class="checkbox-label">
           <input type="checkbox" id="chkStrict" checked>
           Detectar propiedades desconocidas
@@ -466,6 +466,11 @@
 
     setupEditor(specInput, specLinesEl);
     setupEditor(jsonInput, jsonLinesEl);
+
+    // Habilitar/deshabilitar "Formatear JSON" según haya texto
+    jsonInput.addEventListener('input', function() {
+      btnFormat.disabled = jsonInput.value.trim() === '';
+    });
 
     // ========== Utilities ==========
 
@@ -1155,6 +1160,12 @@
       var errors = validateRequest(endpoints[idx].schema, jsonText, chkStrict.checked);
       renderResults(errors);
       highlightErrorLines(jsonLinesEl, errors);
+
+      // Scroll automático al primer error con número de línea
+      var firstWithLine = errors.find(function(e) { return e.line; });
+      if (firstWithLine) {
+        scrollToLine(jsonInput, jsonLinesEl, firstWithLine.line);
+      }
     });
 
     btnFormat.addEventListener('click', function() {
