@@ -547,20 +547,17 @@ span.CodeMirror-selectedtext { background: none; }
       background: var(--bg); color: var(--text); min-height: 100vh;
     }
 
-    header { background: var(--card); border-bottom: 1px solid var(--border); padding: 16px 24px; }
+    header {
+      background: var(--card); border-bottom: 1px solid var(--border); padding: 16px 24px;
+      display: flex; align-items: center; justify-content: space-between; gap: 24px;
+    }
+    .header-left { display: flex; flex-direction: column; }
     header h1 { font-size: 1.4rem; font-weight: 700; color: var(--primary); }
     header p  { font-size: 0.85rem; color: var(--text-muted); margin-top: 2px; }
+    .header-toggle { gap: 8px; }
+    .toggle-text { font-size: 0.82rem; color: var(--text-muted); white-space: nowrap; user-select: none; }
 
-    .container { padding: 20px; display: grid; grid-template-columns: 1fr auto 1fr; gap: 20px; align-items: start; }
-
-    .center-col {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding-top: 180px;
-      gap: 8px;
-    }
+    .container { padding: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
 
     .panel {
       background: var(--card); border: 1px solid var(--border);
@@ -586,42 +583,40 @@ span.CodeMirror-selectedtext { background: none; }
     .cm-editor-wrap.dragover     { border-color: var(--primary); }
     .cm-editor-wrap .CodeMirror  { border-radius: var(--radius); }
 
-    .toolbar { display: flex; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+    .toggle-label {
+      display: flex; align-items: center;
+      cursor: pointer; flex-shrink: 0;
+      gap: 8px;
+    }
+    .toggle-label input { display: none; }
+    .toggle-track {
+      width: 36px; height: 20px;
+      background: #cbd5e1;
+      border-radius: 10px;
+      position: relative;
+      transition: background 0.2s;
+      display: block;
+    }
+    .toggle-thumb {
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 14px; height: 14px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+      display: block;
+    }
+    .toggle-label input:checked + .toggle-track { background: var(--primary); }
+    .toggle-label input:checked + .toggle-track .toggle-thumb { transform: translateX(16px); }
 
     button {
       padding: 8px 16px; border: none; border-radius: var(--radius);
       font-size: 0.85rem; font-weight: 600; cursor: pointer;
       transition: background 0.15s; white-space: nowrap;
     }
-    @keyframes btn-activate {
-      0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(37,99,235,0.7); }
-      40%  { transform: scale(1.12); box-shadow: 0 0 0 10px rgba(37,99,235,0.2); }
-      70%  { transform: scale(0.97); box-shadow: 0 0 0 14px rgba(37,99,235,0.05); }
-      100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(37,99,235,0); }
-    }
-
-    @keyframes btn-pulse {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(37,99,235,0.5); }
-      50%      { box-shadow: 0 0 0 7px rgba(37,99,235,0); }
-    }
-
-    .btn-primary {
-      background: var(--primary); color: white;
-      transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
-      position: relative;
-    }
+    .btn-primary            { background: var(--primary); color: white; }
     .btn-primary:hover      { background: var(--primary-hover); }
-    .btn-primary:disabled   { background: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; animation: none; }
-
-    /* State: just became enabled — pulse to draw attention */
-    .btn-primary.btn-just-enabled {
-      animation: btn-pulse 1s ease-out 2;
-    }
-
-    /* State: clicked — pop animation */
-    .btn-primary.btn-fired {
-      animation: btn-activate 0.4s ease-out forwards;
-    }
+    .btn-primary:disabled   { background: #94a3b8; cursor: not-allowed; }
     .btn-secondary          { background: var(--border); color: var(--text); }
     .btn-secondary:hover    { background: #cbd5e1; }
     .btn-secondary:disabled { background: var(--border); color: #94a3b8; cursor: not-allowed; opacity: 0.6; }
@@ -632,8 +627,6 @@ span.CodeMirror-selectedtext { background: none; }
     }
     select:focus { outline: none; border-color: var(--primary); }
 
-    .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--text-muted); cursor: pointer; user-select: none; }
-    .checkbox-label input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--primary); }
 
     .load-options { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
     .load-options input[type="text"] {
@@ -671,15 +664,21 @@ span.CodeMirror-selectedtext { background: none; }
 
     @media (max-width: 900px) {
       .container { grid-template-columns: 1fr; }
-      .center-col { padding-top: 0; flex-direction: row; justify-content: flex-start; }
-      .results   { grid-column: 1; }
+.results   { grid-column: 1; }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>Validador OpenAPI</h1>
-    <p>Valida peticiones JSON contra una especificación OpenAPI 3.x sin necesidad de enviar la petición</p>
+    <div class="header-left">
+      <h1>Validador OpenAPI</h1>
+      <p>Valida peticiones JSON contra una especificación OpenAPI 3.x sin necesidad de enviar la petición</p>
+    </div>
+    <label class="toggle-label header-toggle" title="Detectar propiedades desconocidas en la petición">
+      <input type="checkbox" id="chkStrict" checked>
+      <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      <span class="toggle-text">Propiedades extra</span>
+    </label>
   </header>
 
   <div class="container">
@@ -700,11 +699,6 @@ span.CodeMirror-selectedtext { background: none; }
       <div id="specStatus"></div>
     </div>
 
-    <!-- Center: Validate button -->
-    <div class="center-col">
-      <button class="btn-primary" id="btnValidate" disabled>&#9654; Validar</button>
-    </div>
-
     <!-- JSON -->
     <div class="panel">
       <div class="panel-title">Petición JSON</div>
@@ -715,15 +709,6 @@ span.CodeMirror-selectedtext { background: none; }
         </select>
       </div>
       <div style="min-width:0;width:100%;overflow:hidden;"><div class="cm-editor-wrap" id="jsonEditorMount"></div></div>
-      <div class="toolbar">
-<button class="btn-secondary" id="btnFormat"         disabled>Formatear JSON</button>
-        <button class="btn-secondary" id="btnFoldAllJson">Comprimir todo</button>
-        <button class="btn-secondary" id="btnUnfoldAllJson">Expandir todo</button>
-        <label class="checkbox-label">
-          <input type="checkbox" id="chkStrict" checked>
-          Detectar propiedades desconocidas
-        </label>
-      </div>
     </div>
 
     <!-- Resultados -->
@@ -754,10 +739,6 @@ span.CodeMirror-selectedtext { background: none; }
     var fileInput      = document.getElementById('fileInput');
     var specUrl        = document.getElementById('specUrl');
     var btnLoadUrl     = document.getElementById('btnLoadUrl');
-    var btnValidate    = document.getElementById('btnValidate');
-    var btnFormat      = document.getElementById('btnFormat');
-    var btnFoldAllJson    = document.getElementById('btnFoldAllJson');
-    var btnUnfoldAllJson  = document.getElementById('btnUnfoldAllJson');
     var chkStrict      = document.getElementById('chkStrict');
     var specBadge      = document.getElementById('specBadge');
     var specStatus     = document.getElementById('specStatus');
@@ -804,35 +785,17 @@ span.CodeMirror-selectedtext { background: none; }
       mode:        'application/json',
       lineWrapping: true,
       placeholder: 'Pega aquí el JSON de la petición...',
-      extraKeys: {
-        'Ctrl-Enter': function() { if (!btnValidate.disabled) btnValidate.click(); },
-        'Cmd-Enter':  function() { if (!btnValidate.disabled) btnValidate.click(); },
-      }
+
     }));
 
     jsonEditor.on('change', function() {
-      var hasText = jsonEditor.getValue().trim() !== '';
-      btnFormat.disabled = !hasText;
-      updateValidateButton();
+      scheduleAutoValidate();
     });
 
-    var _wasDisabled = true;
-    function updateValidateButton() {
-      var shouldDisable = endpointSelect.disabled || jsonEditor.getValue().trim() === '';
-      if (_wasDisabled && !shouldDisable) {
-        // Transition from disabled → enabled: pulse animation
-        btnValidate.disabled = false;
-        btnValidate.classList.remove('btn-just-enabled', 'btn-fired');
-        void btnValidate.offsetWidth; // force reflow
-        btnValidate.classList.add('btn-just-enabled');
-        btnValidate.addEventListener('animationend', function onEnd() {
-          btnValidate.classList.remove('btn-just-enabled');
-          btnValidate.removeEventListener('animationend', onEnd);
-        });
-      } else {
-        btnValidate.disabled = shouldDisable;
-      }
-      _wasDisabled = shouldDisable;
+    var autoValidateTimer = null;
+    function scheduleAutoValidate() {
+      clearTimeout(autoValidateTimer);
+      autoValidateTimer = setTimeout(runValidation, 700);
     }
 
     // ── JSON error line highlighting ──────────────────────────────────────────
@@ -1117,7 +1080,7 @@ span.CodeMirror-selectedtext { background: none; }
       if (!text) {
         parsedSpec = null; endpoints = [];
         endpointSelect.innerHTML = '<option value="">-- Carga una especificación --</option>';
-        endpointSelect.disabled = true; btnValidate.disabled = true;
+        endpointSelect.disabled = true;
         specBadge.style.display = 'none'; specStatus.innerHTML = '';
         return;
       }
@@ -1127,7 +1090,7 @@ span.CodeMirror-selectedtext { background: none; }
         endpointSelect.innerHTML = '';
         if (endpoints.length === 0) {
           endpointSelect.innerHTML = '<option value="">-- No se encontraron endpoints con requestBody --</option>';
-          endpointSelect.disabled = true; btnValidate.disabled = true;
+          endpointSelect.disabled = true;
           showSpecStatus('Spec cargada pero no se encontraron endpoints con requestBody', false);
           return;
         }
@@ -1137,7 +1100,7 @@ span.CodeMirror-selectedtext { background: none; }
           endpointSelect.appendChild(opt);
         });
         endpointSelect.disabled = false;
-        updateValidateButton();
+        scheduleAutoValidate();
         var version = parsedSpec.openapi || parsedSpec.swagger || '?';
         specBadge.textContent = 'v' + version + ' - ' + endpoints.length + ' endpoint(s)';
         specBadge.style.display = '';
@@ -1146,7 +1109,7 @@ span.CodeMirror-selectedtext { background: none; }
         showSpecStatus(e.message, false);
         parsedSpec = null; endpoints = [];
         endpointSelect.innerHTML = '<option value="">-- Carga una especificación --</option>';
-        endpointSelect.disabled = true; btnValidate.disabled = true; specBadge.style.display = 'none';
+        endpointSelect.disabled = true; specBadge.style.display = 'none';
       }
     }
 
@@ -1205,26 +1168,16 @@ span.CodeMirror-selectedtext { background: none; }
 
     specUrl.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); btnLoadUrl.click(); } });
 
-    // ── Validate ──────────────────────────────────────────────────────────────
-    btnValidate.addEventListener('click', function() {
-      // Pop animation on click
-      btnValidate.classList.remove('btn-fired');
-      void btnValidate.offsetWidth;
-      btnValidate.classList.add('btn-fired');
-      btnValidate.addEventListener('animationend', function onEnd() {
-        btnValidate.classList.remove('btn-fired');
-        btnValidate.removeEventListener('animationend', onEnd);
-      });
+    endpointSelect.addEventListener('change', function() { scheduleAutoValidate(); });
+    document.getElementById('chkStrict').addEventListener('change', function() { scheduleAutoValidate(); });
 
+    // ── Validate ──────────────────────────────────────────────────────────────
+    function runValidation() {
       var idx = endpointSelect.value;
       if (idx === '' || !endpoints[idx]) return;
       var jsonText = jsonEditor.getValue().trim();
-      if (!jsonText) {
-        renderResults([{ type: 'error', keyword: 'empty', path: '/', line: null, message: 'El JSON de la petición está vacío', detail: '' }]);
-        return;
-      }
+      if (!jsonText) return;
       var result = validateRequest(endpoints[idx].schema, jsonText, chkStrict.checked);
-      if (result.formatted) { jsonEditor.setValue(result.formatted); jsonEditor.refresh(); }
       var errorMap = new Map();
       result.errors.forEach(function(e) {
         if (!e.line) return;
@@ -1233,12 +1186,8 @@ span.CodeMirror-selectedtext { background: none; }
       requestAnimationFrame(function() {
         renderResults(result.errors);
         cmSetErrorLines(errorMap);
-        requestAnimationFrame(function() {
-          var first = result.errors.find(function(e) { return e.line; });
-          if (first) cmScrollToLine(first.line);
-        });
       });
-    });
+    }
 
     // ── Format ────────────────────────────────────────────────────────────────
     btnFormat.addEventListener('click', function() {
@@ -1252,8 +1201,6 @@ span.CodeMirror-selectedtext { background: none; }
     });
 
     // ── Fold / Unfold JSON ────────────────────────────────────────────────────
-    btnFoldAllJson.addEventListener('click',   function() { jsonEditor.execCommand('foldAll'); });
-    btnUnfoldAllJson.addEventListener('click', function() { jsonEditor.execCommand('unfoldAll'); });
 
     // ── Drag & drop spec ──────────────────────────────────────────────────────
     var specMount = document.getElementById('specEditorMount');
@@ -1275,14 +1222,11 @@ span.CodeMirror-selectedtext { background: none; }
       e.preventDefault(); jsonMount.classList.remove('dragover');
       var file = e.dataTransfer.files[0]; if (!file) return;
       var reader = new FileReader();
-      reader.onload = function(ev) { jsonEditor.setValue(ev.target.result); jsonEditor.refresh(); updateValidateButton(); };
+      reader.onload = function(ev) { jsonEditor.setValue(ev.target.result); jsonEditor.refresh(); scheduleAutoValidate(); };
       reader.readAsText(file);
     });
 
-    // ── Ctrl+Enter global ─────────────────────────────────────────────────────
-    document.addEventListener('keydown', function(e) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (!btnValidate.disabled) btnValidate.click(); }
-    });
+
   </script>
 </body>
 </html>
