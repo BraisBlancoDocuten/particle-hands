@@ -545,6 +545,9 @@ span.CodeMirror-selectedtext { background: none; }
       --shadow: 0 4px 24px rgba(0,0,0,0.3);
       --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       --cm-theme: material-darker;
+      --btn-bg: rgba(148, 163, 184, 0.1);
+      --btn-border: rgba(148, 163, 184, 0.2);
+      --btn-bg-hover: rgba(148, 163, 184, 0.16);
     }
 
     .light-theme {
@@ -568,6 +571,9 @@ span.CodeMirror-selectedtext { background: none; }
       --border-active: rgba(5, 150, 105, 0.35);
       --shadow: 0 4px 24px rgba(0,0,0,0.06);
       --cm-theme: default;
+      --btn-bg: #e2e8f0;
+      --btn-border: #cbd5e1;
+      --btn-bg-hover: #d1d8e3;
     }
     .light-theme .cm-editor-wrap { border-color: rgba(15, 23, 42, 0.12); }
     .light-theme .CodeMirror { background: #fafbfc !important; color: #1e293b !important; }
@@ -735,8 +741,11 @@ span.CodeMirror-selectedtext { background: none; }
     }
     .btn-primary:hover { background: #5ddba8; }
     .btn-primary:disabled { background: var(--bg-hover); border-color: var(--border); color: var(--text-muted); cursor: not-allowed; }
-    .btn-secondary { background: var(--bg-surface); color: var(--text-secondary); border-color: var(--border); }
-    .btn-secondary:hover { background: var(--bg-hover); color: var(--text); border-color: rgba(148,163,184,0.15); }
+    .btn-secondary {
+      background: var(--btn-bg); color: var(--text);
+      border-color: var(--btn-border); font-weight: 600;
+    }
+    .btn-secondary:hover { background: var(--btn-bg-hover); border-color: var(--border-active); color: var(--text); }
     .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
 
     /* ── Select ── */
@@ -812,6 +821,8 @@ span.CodeMirror-selectedtext { background: none; }
     .results #resultsBody::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 3px; }
     .results #resultsBody::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
     .results-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .results-header-right { display: flex; align-items: center; gap: 16px; }
+    .strict-toggle .toggle-text { font-size: 0.72rem; }
     .results-count  { font-size: 0.78rem; color: var(--text-muted); font-family: var(--mono); }
 
     /* ── JSON overlay ── */
@@ -887,11 +898,6 @@ span.CodeMirror-selectedtext { background: none; }
       </div>
     </div>
     <div class="header-controls">
-      <label class="toggle-label header-toggle" title="Detectar propiedades desconocidas en la petición">
-        <input type="checkbox" id="chkStrict" checked>
-        <span class="toggle-track"><span class="toggle-thumb"></span></span>
-        <span class="toggle-text">Propiedades extra</span>
-      </label>
       <button class="btn-theme" id="btnTheme" title="Cambiar a tema oscuro">
         <svg id="iconMoon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M14 8.5A6 6 0 0 1 7.5 2a6 6 0 1 0 6.5 6.5Z"/></svg>
         <svg id="iconSun" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1M8 13.5v1M2.75 2.75l.7.7M12.55 12.55l.7.7M1.5 8h1M13.5 8h1M2.75 13.25l.7-.7M12.55 3.45l.7-.7"/></svg>
@@ -945,7 +951,14 @@ span.CodeMirror-selectedtext { background: none; }
     <div class="panel results" id="resultsPanel">
       <div class="results-header">
         <div class="panel-title" style="margin-bottom:0">Resultados de validación</div>
-        <span class="results-count" id="resultsCount"></span>
+        <div class="results-header-right">
+          <label class="toggle-label strict-toggle" id="strictToggle" title="Detectar propiedades desconocidas en la petición" style="display:none">
+            <span class="toggle-text">Propiedades extra</span>
+            <input type="checkbox" id="chkStrict" checked>
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+          <span class="results-count" id="resultsCount"></span>
+        </div>
       </div>
       <div id="resultsBody">
         <div class="empty-state" id="emptyState">
@@ -1032,6 +1045,7 @@ span.CodeMirror-selectedtext { background: none; }
 
     jsonEditor.on('change', function() {
       scheduleAutoValidate();
+      updateStrictVisibility();
     });
 
     var autoValidateTimer = null;
@@ -1330,6 +1344,13 @@ span.CodeMirror-selectedtext { background: none; }
 
     // ── Load Spec ─────────────────────────────────────────────────────────────
     var jsonOverlay = document.getElementById('jsonOverlay');
+    var strictToggle = document.getElementById('strictToggle');
+
+    function updateStrictVisibility() {
+      var hasSpec = endpoints.length > 0;
+      var hasJson = jsonEditor.getValue().trim().length > 0;
+      strictToggle.style.display = (hasSpec && hasJson) ? '' : 'none';
+    }
 
     function loadSpec() {
       var text = specEditor.getValue().trim();
@@ -1339,6 +1360,7 @@ span.CodeMirror-selectedtext { background: none; }
         endpointSelect.disabled = true;
         specBadge.style.display = 'none'; specStatus.innerHTML = '';
         jsonOverlay.classList.remove('hidden');
+        updateStrictVisibility();
         return;
       }
       try {
@@ -1350,6 +1372,7 @@ span.CodeMirror-selectedtext { background: none; }
           endpointSelect.disabled = true;
           showSpecStatus('Spec cargada pero no se encontraron endpoints con requestBody', false);
           jsonOverlay.classList.remove('hidden');
+          updateStrictVisibility();
           return;
         }
         jsonOverlay.classList.add('hidden');
@@ -1371,12 +1394,14 @@ span.CodeMirror-selectedtext { background: none; }
         specBadge.textContent = 'v' + version + ' - ' + endpoints.length + ' endpoint(s)';
         specBadge.style.display = '';
         showSpecStatus('Especificación cargada. ' + endpoints.length + ' endpoint(s) con requestBody.', true);
+        updateStrictVisibility();
       } catch (e) {
         showSpecStatus(e.message, false);
         parsedSpec = null; endpoints = [];
         endpointSelect.innerHTML = '<option value="">-- Carga una especificación --</option>';
         endpointSelect.disabled = true; specBadge.style.display = 'none';
         jsonOverlay.classList.remove('hidden');
+        updateStrictVisibility();
       }
     }
 
@@ -1453,6 +1478,8 @@ span.CodeMirror-selectedtext { background: none; }
       requestAnimationFrame(function() {
         renderResults(result.errors);
         cmSetErrorLines(errorMap);
+        var firstError = result.errors.find(function(e) { return e.line; });
+        if (firstError) cmScrollToLine(firstError.line);
       });
     }
 
