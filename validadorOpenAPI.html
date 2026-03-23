@@ -188,6 +188,7 @@
     .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
     .btn-secondary { background: var(--border); color: var(--text); }
     .btn-secondary:hover { background: #cbd5e1; }
+    .btn-secondary:disabled { background: var(--border); color: #94a3b8; cursor: not-allowed; opacity: 0.6; }
 
     select {
       padding: 8px 12px;
@@ -468,6 +469,12 @@
     setupEditor(jsonInput, jsonLinesEl);
 
     // Habilitar/deshabilitar "Formatear JSON" según haya texto
+    function setJsonValue(text) {
+      jsonInput.value = text;
+      btnFormat.disabled = text.trim() === '';
+      updateLineNumbers(jsonInput, jsonLinesEl);
+    }
+
     jsonInput.addEventListener('input', function() {
       btnFormat.disabled = jsonInput.value.trim() === '';
     });
@@ -775,8 +782,7 @@
 
       // Pretty-print and update textarea for consistent line number mapping
       var formatted = JSON.stringify(data, null, 2);
-      jsonInput.value = formatted;
-      updateLineNumbers(jsonInput, jsonLinesEl);
+      setJsonValue(formatted);
 
       var schema = resolveRefs(deepClone(rawSchema), parsedSpec, new Set());
       schema = flattenAllOf(schema);
@@ -1164,15 +1170,16 @@
       // Scroll automático al primer error con número de línea
       var firstWithLine = errors.find(function(e) { return e.line; });
       if (firstWithLine) {
-        scrollToLine(jsonInput, jsonLinesEl, firstWithLine.line);
+        setTimeout(function() {
+          scrollToLine(jsonInput, jsonLinesEl, firstWithLine.line);
+        }, 0);
       }
     });
 
     btnFormat.addEventListener('click', function() {
       try {
         var parsed = JSON.parse(jsonInput.value);
-        jsonInput.value = JSON.stringify(parsed, null, 2);
-        updateLineNumbers(jsonInput, jsonLinesEl);
+        setJsonValue(JSON.stringify(parsed, null, 2));
       } catch (e) {
         renderResults([{ type: 'error', keyword: 'parse', path: '/', line: null, message: 'JSON inválido - no se puede formatear', detail: e.message }]);
       }
@@ -1194,9 +1201,13 @@
         if (!file) return;
         var reader = new FileReader();
         reader.onload = function(ev) {
-          textareaEl.value = ev.target.result;
-          updateLineNumbers(textareaEl, gutterEl);
-          if (i === 0) loadSpec();
+          if (i === 0) {
+            textareaEl.value = ev.target.result;
+            updateLineNumbers(textareaEl, gutterEl);
+            loadSpec();
+          } else {
+            setJsonValue(ev.target.result);
+          }
         };
         reader.readAsText(file);
       });
