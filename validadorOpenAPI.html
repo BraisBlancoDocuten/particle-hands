@@ -1026,29 +1026,90 @@
 
     // ========== Load from URL ==========
 
-    function fetchWithCorsFallback(url) {
-      var proxies = [
-        function(u) { return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u); },
-        function(u) { return 'https://corsproxy.io/?' + encodeURIComponent(u); },
-        function(u) { return 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u); }
+    function fetchWithTimeout(url, timeoutMs) {
+      var controller = new AbortController();
+      var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+      return fetch(url, { signal: controller.signal })
+        .then(function(res) {
+          clearTimeout(timer);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.text();
+        })
+        .catch(function(err) {
+          clearTimeout(timer);
+          throw err;
+        });
+    }
+
+    function fetchWithCorsFallback(url, onProgress) {
+      var TIMEOUT = 8000; // 8 s por intento
+
+      var attempts = [
+        {
+          label: 'conexión directa',
+          fn: function() { return fetchWithTimeout(url, TIMEOUT); }
+        },
+        {
+          label: 'proxy 1 (allorigins)',
+          fn: function() {
+            return fetchWithTimeout(
+              'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+              TIMEOUT
+            );
+          }
+        },
+        {
+          label: 'proxy 2 (corsproxy.io)',
+          fn: function() {
+            return fetchWithTimeout(
+              'https://corsproxy.io/?' + encodeURIComponent(url),
+              TIMEOUT
+            );
+          }
+        },
+        {
+          label: 'proxy 3 (codetabs)',
+          fn: function() {
+            return fetchWithTimeout(
+              'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
+              TIMEOUT
+            );
+          }
+        }
       ];
 
-      // Try direct fetch first
-      return fetch(url).then(function(res) {
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        return res.text();
-      }).catch(function() {
-        // Direct failed, try proxies in sequence
-        return proxies.reduce(function(chain, proxyFn) {
-          return chain.catch(function() {
-            return fetch(proxyFn(url)).then(function(res) {
-              if (!res.ok) throw new Error('HTTP ' + res.status);
-              return res.text();
-            });
-          });
-        }, Promise.reject());
-      }).catch(function() {
-        throw new Error('No se pudo descargar. El servidor puede no permitir CORS. Prueba a descargar el fichero manualmente y usa "Cargar fichero".');
+      // Lanza todos en paralelo y devuelve el primero que tenga éxito.
+      // Si todos fallan, rechaza con un mensaje claro.
+      return new Promise(function(resolve, reject) {
+        var failed = 0;
+        var resolved = false;
+        var errors = [];
+
+        attempts.forEach(function(attempt, i) {
+          // Escalonar el inicio para no saturar y dar prioridad al directo
+          setTimeout(function() {
+            if (resolved) return;
+            if (onProgress) onProgress('Intentando ' + attempt.label + '…');
+            attempt.fn()
+              .then(function(text) {
+                if (!resolved) {
+                  resolved = true;
+                  resolve(text);
+                }
+              })
+              .catch(function(err) {
+                errors.push(attempt.label + ': ' + (err.name === 'AbortError' ? 'timeout' : err.message));
+                failed++;
+                if (failed === attempts.length && !resolved) {
+                  reject(new Error(
+                    'No se pudo descargar la especificación tras ' + attempts.length + ' intentos.\n' +
+                    'El servidor probablemente bloquea CORS desde el navegador.\n' +
+                    '→ Descarga el fichero manualmente y usa el botón "Cargar fichero".'
+                  ));
+                }
+              });
+          }, i * 300); // 0 ms, 300 ms, 600 ms, 900 ms de escalonado
+        });
       });
     }
 
@@ -1056,15 +1117,25 @@
       var url = specUrl.value.trim();
       if (!url) { showSpecStatus('Introduce una URL', false); return; }
       btnLoadUrl.disabled = true;
-      btnLoadUrl.textContent = 'Cargando...';
-      fetchWithCorsFallback(url)
+      btnLoadUrl.textContent = 'Cargando…';
+      showSpecStatus('⏳ Conectando…', true);
+
+      fetchWithCorsFallback(url, function(msg) {
+        showSpecStatus('⏳ ' + msg, true);
+        btnLoadUrl.textContent = 'Cargando…';
+      })
         .then(function(text) {
           specInput.value = text;
           updateLineNumbers(specInput, specLinesEl);
           loadSpec();
         })
-        .catch(function(e) { showSpecStatus('Error al descargar: ' + e.message, false); })
-        .finally(function() { btnLoadUrl.disabled = false; btnLoadUrl.textContent = 'Cargar URL'; });
+        .catch(function(e) {
+          showSpecStatus('❌ ' + e.message, false);
+        })
+        .finally(function() {
+          btnLoadUrl.disabled = false;
+          btnLoadUrl.textContent = 'Cargar URL';
+        });
     });
 
     specUrl.addEventListener('keydown', function(e) {
