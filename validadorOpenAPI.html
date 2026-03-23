@@ -475,8 +475,13 @@
       updateLineNumbers(jsonInput, jsonLinesEl);
     }
 
+    function updateValidateButton() {
+      btnValidate.disabled = endpointSelect.disabled || jsonInput.value.trim() === '';
+    }
+
     jsonInput.addEventListener('input', function() {
       btnFormat.disabled = jsonInput.value.trim() === '';
+      updateValidateButton();
     });
 
     // ========== Utilities ==========
@@ -770,19 +775,18 @@
             if (jsonText[i] === '\n') errLine++;
           }
         }
-        return [{
+        return { errors: [{
           type: 'error',
           keyword: 'parse',
           path: '/',
           line: errLine,
           message: 'JSON inválido',
           detail: e.message
-        }];
+        }], formatted: null };
       }
 
-      // Pretty-print and update textarea for consistent line number mapping
+      // Pretty-print for consistent line number mapping
       var formatted = JSON.stringify(data, null, 2);
-      setJsonValue(formatted);
 
       var schema = resolveRefs(deepClone(rawSchema), parsedSpec, new Set());
       schema = flattenAllOf(schema);
@@ -793,13 +797,11 @@
       try {
         validate = ajv.compile(schema);
       } catch (e) {
-        return [{ type: 'warning', keyword: 'schema', path: '/', line: null, message: 'Error al compilar el schema', detail: e.message }];
+        return { errors: [{ type: 'warning', keyword: 'schema', path: '/', line: null, message: 'Error al compilar el schema', detail: e.message }], formatted: null };
       }
 
       var valid = validate(data);
-      if (valid) return [];
-
-      return (validate.errors || []).map(function(err) {
+      var errors = valid ? [] : (validate.errors || []).map(function(err) {
         var result = formatError(err);
         var linePath = result.path;
         if (err.keyword === 'additionalProperties' && err.params.additionalProperty) {
@@ -808,6 +810,8 @@
         result.line = findLineForPath(formatted, linePath);
         return result;
       });
+
+      return { errors: errors, formatted: formatted };
     }
 
     // ========== Error Formatting ==========
@@ -936,18 +940,22 @@
       var lines = textarea.value.split('\n');
       if (line < 1 || line > lines.length) return;
 
-      // Calculate scroll position based on line height
-      var lineHeight = parseFloat(getComputedStyle(textarea).lineHeight);
-      var targetScroll = (line - 1) * lineHeight - textarea.clientHeight / 3;
-      textarea.scrollTop = Math.max(0, targetScroll);
-      gutterEl.scrollTop = textarea.scrollTop;
-
-      // Select the line
+      // Calcular posición de carácter de inicio y fin de la línea
       var start = 0;
       for (var i = 0; i < line - 1; i++) start += lines[i].length + 1;
       var end = start + lines[line - 1].length;
+
+      // Seleccionar la línea (esto solo mueve el cursor, no garantiza scroll)
       textarea.focus();
       textarea.setSelectionRange(start, end);
+
+      // Calcular scroll manualmente teniendo en cuenta padding
+      var style = getComputedStyle(textarea);
+      var lineHeight = parseFloat(style.lineHeight);
+      var paddingTop = parseFloat(style.paddingTop);
+      var targetScroll = paddingTop + (line - 1) * lineHeight - textarea.clientHeight / 3;
+      textarea.scrollTop = Math.max(0, targetScroll);
+      gutterEl.scrollTop = textarea.scrollTop;
     }
 
     function escapeHtml(text) {
@@ -992,7 +1000,7 @@
         });
 
         endpointSelect.disabled = false;
-        btnValidate.disabled = false;
+        updateValidateButton();
 
         var version = parsedSpec.openapi || parsedSpec.swagger || '?';
         specBadge.textContent = 'v' + version + ' - ' + endpoints.length + ' endpoint(s)';
@@ -1163,17 +1171,25 @@
         renderResults([{ type: 'error', keyword: 'empty', path: '/', line: null, message: 'El JSON de la petición está vacío', detail: '' }]);
         return;
       }
-      var errors = validateRequest(endpoints[idx].schema, jsonText, chkStrict.checked);
-      renderResults(errors);
-      highlightErrorLines(jsonLinesEl, errors);
 
-      // Scroll automático al primer error con número de línea
-      var firstWithLine = errors.find(function(e) { return e.line; });
-      if (firstWithLine) {
-        setTimeout(function() {
-          scrollToLine(jsonInput, jsonLinesEl, firstWithLine.line);
-        }, 0);
+      var result = validateRequest(endpoints[idx].schema, jsonText, chkStrict.checked);
+
+      // Si hay texto formateado, actualizar el textarea primero
+      if (result.formatted) {
+        setJsonValue(result.formatted);
       }
+
+      // Esperar a que el navegador termine de pintar el nuevo contenido antes de hacer scroll
+      requestAnimationFrame(function() {
+        renderResults(result.errors);
+        highlightErrorLines(jsonLinesEl, result.errors);
+        requestAnimationFrame(function() {
+          var firstWithLine = result.errors.find(function(e) { return e.line; });
+          if (firstWithLine) {
+            scrollToLine(jsonInput, jsonLinesEl, firstWithLine.line);
+          }
+        });
+      });
     });
 
     btnFormat.addEventListener('click', function() {
@@ -1207,6 +1223,7 @@
             loadSpec();
           } else {
             setJsonValue(ev.target.result);
+            updateValidateButton();
           }
         };
         reader.readAsText(file);
