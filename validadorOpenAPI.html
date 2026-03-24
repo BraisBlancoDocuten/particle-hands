@@ -822,7 +822,6 @@ span.CodeMirror-selectedtext { background: none; }
     .results #resultsBody::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
     .results-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
     .results-header-right { display: flex; align-items: center; gap: 16px; }
-    .strict-toggle .toggle-text { font-size: 0.72rem; }
     .results-count  { font-size: 0.78rem; color: var(--text-muted); font-family: var(--mono); }
 
     /* ── JSON overlay ── */
@@ -850,6 +849,20 @@ span.CodeMirror-selectedtext { background: none; }
     .json-overlay-desc {
       font-size: 0.75rem; max-width: 240px; line-height: 1.55;
     }
+
+    /* ── Expand toggle ── */
+    .btn-expand {
+      background: none; border: 1px solid var(--border); border-radius: 6px;
+      width: 26px; height: 26px; padding: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--text-muted); margin-left: auto;
+      transition: all var(--transition); line-height: 0;
+    }
+    .btn-expand:hover { color: var(--text); border-color: var(--border-active); background: var(--bg-hover); }
+
+    .container.expanded { grid-template-columns: 1fr; }
+    .container.expanded #specPanel { display: none; }
+    .container.expanded #jsonPanel { grid-column: 1; }
 
     .result-card {
       padding: 12px 16px; border-radius: var(--radius-sm); margin-bottom: 6px;
@@ -907,7 +920,7 @@ span.CodeMirror-selectedtext { background: none; }
 
   <div class="container">
     <!-- Spec -->
-    <div class="panel">
+    <div class="panel" id="specPanel">
       <div class="panel-title">
         Especificación OpenAPI
         <span id="specBadge" class="badge" style="display:none"></span>
@@ -924,7 +937,7 @@ span.CodeMirror-selectedtext { background: none; }
     </div>
 
     <!-- JSON -->
-    <div class="panel" style="position:relative;">
+    <div class="panel" id="jsonPanel" style="position:relative;">
       <div class="json-overlay" id="jsonOverlay">
         <div class="json-overlay-content">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg>
@@ -932,7 +945,13 @@ span.CodeMirror-selectedtext { background: none; }
           <span class="json-overlay-desc">Importa un fichero OpenAPI en el panel izquierdo para empezar a validar peticiones</span>
         </div>
       </div>
-      <div class="panel-title">Petición JSON</div>
+      <div class="panel-title">
+        Petición JSON
+        <button class="btn-expand" id="btnExpand" title="Expandir editor" style="display:none">
+          <svg id="iconExpand" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 1.5h4.5V6"/><path d="M6 14.5H1.5V10"/><path d="M14.5 1.5 9.5 6.5"/><path d="M1.5 14.5l5-5"/></svg>
+          <svg id="iconCollapse" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M5.5 1.5v4.5H1"/><path d="M10.5 14.5V10H15"/><path d="M1 6l5-5"/><path d="M15 10l-5 5"/></svg>
+        </button>
+      </div>
       <div class="endpoint-row">
         <label>Endpoint:</label>
         <select id="endpointSelect" disabled>
@@ -952,11 +971,7 @@ span.CodeMirror-selectedtext { background: none; }
       <div class="results-header">
         <div class="panel-title" style="margin-bottom:0">Resultados de validación</div>
         <div class="results-header-right">
-          <label class="toggle-label strict-toggle" id="strictToggle" title="Detectar propiedades desconocidas en la petición" style="display:none">
-            <span class="toggle-text">Propiedades extra</span>
-            <input type="checkbox" id="chkStrict" checked>
-            <span class="toggle-track"><span class="toggle-thumb"></span></span>
-          </label>
+          <input type="checkbox" id="chkStrict" checked style="display:none">
           <span class="results-count" id="resultsCount"></span>
         </div>
       </div>
@@ -1045,7 +1060,6 @@ span.CodeMirror-selectedtext { background: none; }
 
     jsonEditor.on('change', function() {
       scheduleAutoValidate();
-      updateStrictVisibility();
     });
 
     var autoValidateTimer = null;
@@ -1344,12 +1358,16 @@ span.CodeMirror-selectedtext { background: none; }
 
     // ── Load Spec ─────────────────────────────────────────────────────────────
     var jsonOverlay = document.getElementById('jsonOverlay');
-    var strictToggle = document.getElementById('strictToggle');
 
-    function updateStrictVisibility() {
-      var hasSpec = endpoints.length > 0;
-      var hasJson = jsonEditor.getValue().trim().length > 0;
-      strictToggle.style.display = (hasSpec && hasJson) ? '' : 'none';
+    function collapseJsonEditor() {
+      var c = document.querySelector('.container');
+      var b = document.getElementById('btnExpand');
+      var iE = document.getElementById('iconExpand');
+      var iC = document.getElementById('iconCollapse');
+      c.classList.remove('expanded');
+      if (b) b.style.display = 'none';
+      if (iE) iE.style.display = '';
+      if (iC) iC.style.display = 'none';
     }
 
     function loadSpec() {
@@ -1360,7 +1378,7 @@ span.CodeMirror-selectedtext { background: none; }
         endpointSelect.disabled = true;
         specBadge.style.display = 'none'; specStatus.innerHTML = '';
         jsonOverlay.classList.remove('hidden');
-        updateStrictVisibility();
+        collapseJsonEditor();
         return;
       }
       try {
@@ -1372,10 +1390,11 @@ span.CodeMirror-selectedtext { background: none; }
           endpointSelect.disabled = true;
           showSpecStatus('Spec cargada pero no se encontraron endpoints con requestBody', false);
           jsonOverlay.classList.remove('hidden');
-          updateStrictVisibility();
+          collapseJsonEditor();
           return;
         }
         jsonOverlay.classList.add('hidden');
+        document.getElementById('btnExpand').style.display = '';
         endpoints.forEach(function(ep, i) {
           var opt = document.createElement('option');
           opt.value = i; opt.textContent = ep.method + ' ' + ep.path + (ep.summary ? ' - ' + ep.summary : '');
@@ -1394,14 +1413,13 @@ span.CodeMirror-selectedtext { background: none; }
         specBadge.textContent = 'v' + version + ' - ' + endpoints.length + ' endpoint(s)';
         specBadge.style.display = '';
         showSpecStatus('Especificación cargada. ' + endpoints.length + ' endpoint(s) con requestBody.', true);
-        updateStrictVisibility();
       } catch (e) {
         showSpecStatus(e.message, false);
         parsedSpec = null; endpoints = [];
         endpointSelect.innerHTML = '<option value="">-- Carga una especificación --</option>';
         endpointSelect.disabled = true; specBadge.style.display = 'none';
         jsonOverlay.classList.remove('hidden');
-        updateStrictVisibility();
+        collapseJsonEditor();
       }
     }
 
@@ -1461,7 +1479,6 @@ span.CodeMirror-selectedtext { background: none; }
     specUrl.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); btnLoadUrl.click(); } });
 
     endpointSelect.addEventListener('change', function() { scheduleAutoValidate(); });
-    document.getElementById('chkStrict').addEventListener('change', function() { scheduleAutoValidate(); });
 
     // ── Validate ──────────────────────────────────────────────────────────────
     function runValidation() {
@@ -1520,6 +1537,21 @@ span.CodeMirror-selectedtext { background: none; }
       reader.readAsText(file);
     });
 
+
+    // ── Expand JSON editor ──────────────────────────────────────────────────
+    var btnExpand     = document.getElementById('btnExpand');
+    var iconExpand    = document.getElementById('iconExpand');
+    var iconCollapse  = document.getElementById('iconCollapse');
+    var containerEl   = document.querySelector('.container');
+
+    btnExpand.addEventListener('click', function() {
+      var expanding = !containerEl.classList.contains('expanded');
+      containerEl.classList.toggle('expanded', expanding);
+      iconExpand.style.display  = expanding ? 'none' : '';
+      iconCollapse.style.display = expanding ? '' : 'none';
+      btnExpand.title = expanding ? 'Mostrar especificación' : 'Expandir editor';
+      setTimeout(function() { jsonEditor.refresh(); }, 50);
+    });
 
     // ── Theme toggle ──────────────────────────────────────────────────────
     (function() {
