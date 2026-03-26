@@ -958,6 +958,8 @@ span.CodeMirror-selectedtext { background: none; }
           <option value="">-- Carga una especificación --</option>
         </select>
         <button class="btn-secondary" id="btnFormat">Formatear</button>
+        <button class="btn-secondary" id="btnLoadJsonFile">Cargar fichero</button>
+        <input type="file" id="jsonFileInput" accept=".json" style="display:none">
       </div>
       <div class="cm-grow"><div class="cm-editor-wrap" id="jsonEditorMount"></div></div>
       <div class="validation-status vs-idle" id="validationStatus">
@@ -1499,6 +1501,22 @@ span.CodeMirror-selectedtext { background: none; }
         if (firstError) cmScrollToLine(firstError.line);
       });
     }
+
+    // ── Load JSON from file ───────────────────────────────────────────────────
+    var btnLoadJsonFile = document.getElementById('btnLoadJsonFile');
+    var jsonFileInput   = document.getElementById('jsonFileInput');
+    btnLoadJsonFile.addEventListener('click', function() { jsonFileInput.click(); });
+    jsonFileInput.addEventListener('change', function(e) {
+      var file = e.target.files[0]; if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        jsonEditor.setValue(ev.target.result);
+        jsonEditor.refresh();
+        scheduleAutoValidate();
+      };
+      reader.readAsText(file);
+      jsonFileInput.value = '';
+    });
 
     // ── Format ────────────────────────────────────────────────────────────────
     btnFormat.addEventListener('click', function() {
