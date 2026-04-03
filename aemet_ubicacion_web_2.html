@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Paisaje del tiempo · AEMET</title>
+  <style>
+    :root {
+      --bg: #08101b;
+      --panel: rgba(9, 16, 27, 0.66);
+      --panel-strong: rgba(7, 13, 24, 0.82);
+      --border: rgba(255,255,255,0.12);
+      --text: #eef4ff;
+      --muted: #adc1e7;
+      --accent: #7ac6ff;
+      --accent-2: #b5f0ff;
+      --ok: #8af1b3;
+      --warn: #ffd98d;
+      --error: #ff9f9f;
+      --shadow: 0 18px 55px rgba(0,0,0,0.32);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #08101b;
+      color: var(--text);
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .ui {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .header {
+      pointer-events: auto;
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      right: 18px;
+      display: grid;
+      grid-template-columns: minmax(320px, 1.25fr) minmax(340px, 0.95fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .glass {
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      border-radius: var(--radius);
+      backdrop-filter: blur(14px);
+    }
+
+    .metrics {
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .title {
+      font-weight: 800;
+      font-size: clamp(1.05rem, 1.2vw, 1.3rem);
+      letter-spacing: 0.01em;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.05);
+      color: var(--muted);
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .metric-card {
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .metric-label {
+      font-size: 0.84rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-size: clamp(1.6rem, 2.2vw, 2.25rem);
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+
+    .metric-hint {
+      margin-top: 8px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .controls {
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .controls-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .switch {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .switch input {
+      appearance: none;
+      width: 52px;
+      height: 31px;
+      border-radius: 999px;
+      background: #22334f;
+      border: 1px solid rgba(255,255,255,0.12);
+      position: relative;
+      cursor: pointer;
+      outline: none;
+      transition: 0.2s ease;
+    }
+
+    .switch input::after {
+      content: "";
+      position: absolute;
+      width: 23px;
+      height: 23px;
+      left: 3px;
+      top: 3px;
+      border-radius: 50%;
+      background: white;
+      transition: 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    }
+
+    .switch input:checked {
+      background: linear-gradient(180deg, #7fd2ff, #5eb5ff);
+    }
+
+    .switch input:checked::after {
+      transform: translateX(21px);
+    }
+
+    .control-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+    }
+
+    .field.field-wide {
+      grid-column: 1 / -1;
+    }
+
+    .field label {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .field input[type="range"] {
+      width: 100%;
+      accent-color: #7cc6ff;
+      cursor: pointer;
+    }
+
+    .field input[type="password"] {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(7,13,24,0.72);
+      color: var(--text);
+      padding: 12px 13px;
+      border-radius: 12px;
+      outline: none;
+      font-size: 0.94rem;
+    }
+
+    .field .value {
+      color: var(--accent-2);
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 14px;
+      padding: 12px 15px;
+      font-size: 0.95rem;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 0.15s ease, opacity 0.2s ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+    .primary {
+      background: linear-gradient(180deg, #8cd6ff, #5eb6ff);
+      color: #062039;
+    }
+
+    .secondary {
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .status {
+      min-height: 45px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
+      white-space: pre-line;
+    }
+
+    .status.ok { color: var(--ok); }
+    .status.warn { color: var(--warn); }
+    .status.error { color: var(--error); }
+
+    .corner-note {
+      pointer-events: none;
+      position: absolute;
+      left: 18px;
+      bottom: 18px;
+      max-width: 520px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(4, 8, 15, 0.42);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.5;
+      backdrop-filter: blur(10px);
+    }
+
+    @media (max-width: 980px) {
+      body { overflow: auto; }
+      .ui { position: relative; }
+      .header {
+        position: relative;
+        inset: auto;
+        padding: 16px;
+        grid-template-columns: 1fr;
+      }
+      .corner-note {
+        position: relative;
+        left: auto;
+        bottom: auto;
+        margin: 0 16px 16px;
+      }
+      canvas {
+        position: fixed;
+        inset: 0;
+      }
+    }
+
+    @media (max-width: 700px) {
+      .metric-grid,
+      .control-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div class="ui">
+    <div class="header">
+      <section class="glass metrics">
+        <div class="brand-row">
+          <div>
+            <div class="title">Paisaje meteorológico</div>
+            <div class="subtitle" id="stationLabel">Esperando datos…</div>
+          </div>
+          <div class="pill" id="timeLabel">—</div>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">Temperatura</div>
+            <div class="metric-value" id="temperatureValue">—</div>
+            <div class="metric-hint" id="temperatureHint">Color y neblina del paisaje</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Viento</div>
+            <div class="metric-value" id="windValue">—</div>
+            <div class="metric-hint" id="windHint">Giro de la turbina y balanceo</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Lluvia</div>
+            <div class="metric-value" id="rainValue">—</div>
+            <div class="metric-hint" id="rainHint">Partículas y charcos</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="glass controls">
+        <div class="controls-top">
+          <label class="switch">
+            <input id="simulateToggle" type="checkbox" />
+            <span>Simular tiempo</span>
+          </label>
+          <div class="pill" id="modeLabel">Modo real</div>
+        </div>
+
+        <div class="control-grid">
+          <div class="field field-wide">
+            <label for="apiKey">API Key de AEMET</label>
+            <input id="apiKey" type="password" placeholder="Pega aquí tu API Key" />
+          </div>
+
+          <div class="field">
+            <label for="tempSlider">Temperatura <span class="value" id="tempSliderValue">22 °C</span></label>
+            <input id="tempSlider" type="range" min="-10" max="45" step="1" value="22" />
+          </div>
+
+          <div class="field">
+            <label for="windSlider">Viento <span class="value" id="windSliderValue">12 km/h</span></label>
+            <input id="windSlider" type="range" min="0" max="120" step="1" value="12" />
+          </div>
+
+          <div class="field field-wide">
+            <label for="rainSlider">Precipitaciones <span class="value" id="rainSliderValue">0.0 mm</span></label>
+            <input id="rainSlider" type="range" min="0" max="40" step="0.1" value="0" />
+          </div>
+        </div>
+
+        <div class="buttons">
+          <button class="primary" id="realWeatherBtn">Usar mi ubicación</button>
+          <button class="secondary" id="demoWeatherBtn">Cargar demo</button>
+        </div>
+
+        <div class="status" id="status">Activa “Simular tiempo” para probar el paisaje manualmente o usa tu ubicación para traer los datos reales.</div>
+      </section>
+    </div>
+
+    <div class="corner-note">
+      El header muestra solo temperatura, viento y lluvia. El paisaje cambia según la hora local: amanecer, día, atardecer o noche. La lluvia cae como partículas animadas, y la turbina gira con la intensidad del viento.
+    </div>
+  </div>
+
+  <script>
+    const apiBase = 'https://opendata.aemet.es/opendata/api';
+    const canvas = document.getElementById('scene');
+    const ctx = canvas.getContext('2d');
+    const $ = (id) => document.getElementById(id);
+
+    const state = {
+      mode: 'real',
+      realWeather: {
+        temperature: 22,
+        wind: 10,
+        rain: 0,
+        stationName: 'Sin datos',
+        timeISO: null,
+      },
+      simulatedWeather: {
+        temperature: 22,
+        wind: 12,
+        rain: 0,
+        stationName: 'Simulación manual',
+        timeISO: null,
+      },
+      location: null,
+      rainParticles: [],
+      stars: [],
+      turbineAngle: 0,
+      lastTs: performance.now(),
+      cloudDrift: 0,
+    };
+
+    function setStatus(message, tone = '') {
+      const el = $('status');
+      el.className = `status ${tone}`.trim();
+      el.textContent = message;
+    }
+
+    function formatNumber(value, digits = 1) {
+      if (value === undefined || value === null || value === '') return '—';
+      const n = Number(value);
+      if (Number.isNaN(n)) return String(value);
+      return new Intl.NumberFormat('es-ES', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: digits,
+      }).format(n);
+    }
+
+    function activeWeather() {
+      return state.mode === 'simulate' ? state.simulatedWeather : state.realWeather;
+    }
+
+    function getHourFromWeather() {
+      const active = activeWeather();
+      if (active.timeISO) {
+        const d = new Date(active.timeISO);
+        if (!Number.isNaN(d.getTime())) return d.getHours() + d.getMinutes() / 60;
+      }
+      const now = new Date();
+      return now.getHours() + now.getMinutes() / 60;
+    }
+
+    function getLightPhase(hour) {
+      if (hour < 6) return { phase: 'noche', t: hour / 6 };
+      if (hour < 8.5) return { phase: 'amanecer', t: (hour - 6) / 2.5 };
+      if (hour < 18.5) return { phase: 'día', t: (hour - 8.5) / 10 };
+      if (hour < 21) return { phase: 'atardecer', t: (hour - 18.5) / 2.5 };
+      return { phase: 'noche', t: (hour - 21) / 3 };
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function mixColor(c1, c2, t) {
+      return [
+        Math.round(lerp(c1[0], c2[0], t)),
+        Math.round(lerp(c1[1], c2[1], t)),
+        Math.round(lerp(c1[2], c2[2], t)),
+      ];
+    }
+
+    function rgb(arr, alpha = 1) {
+      return `rgba(${arr[0]}, ${arr[1]}, ${arr[2]}, ${alpha})`;
+    }
+
+    function skyPalette(hour, temp, rain) {
+      const p = getLightPhase(hour);
+      const nightTop = [10, 17, 36];
+      const nightBottom = [31, 44, 74];
+      const dawnTop = [244, 144, 95];
+      const dawnBottom = [127, 179, 250];
+      const dayTop = [92, 178, 245];
+      const dayBottom = [202, 230, 255];
+      const duskTop = [56, 79, 146];
+      const duskBottom = [255, 146, 102];
+
+      let top;
+      let bottom;
+      if (p.phase === 'amanecer') {
+        top = mixColor(nightTop, dawnTop, p.t);
+        bottom = mixColor(nightBottom, dawnBottom, p.t);
+      } else if (p.phase === 'día') {
+        top = mixColor(dawnTop, dayTop, Math.min(1, p.t + 0.25));
+        bottom = mixColor(dawnBottom, dayBottom, Math.min(1, p.t + 0.25));
+      } else if (p.phase === 'atardecer') {
+        top = mixColor(dayTop, duskTop, p.t);
+        bottom = mixColor(dayBottom, duskBottom, p.t);
+      } else {
+        const t = hour < 6 ? Math.min(1, hour / 6) * 0.12 : Math.min(1, (hour - 21) / 3) * 0.1;
+        top = mixColor(duskTop, nightTop, 0.85 + t);
+        bottom = mixColor(duskBottom, nightBottom, 0.85 + t);
+      }
+
+      const coldFactor = Math.max(0, Math.min(1, (12 - temp) / 24));
+      const hotFactor = Math.max(0, Math.min(1, (temp - 28) / 18));
+      top = mixColor(top, [180, 220, 255], coldFactor * 0.22);
+      bottom = mixColor(bottom, [215, 238, 255], coldFactor * 0.25);
+      top = mixColor(top, [255, 176, 120], hotFactor * 0.18);
+      bottom = mixColor(bottom, [255, 214, 152], hotFactor * 0.12);
+
+      const rainFactor = Math.min(1, rain / 18);
+      top = mixColor(top, [80, 95, 122], rainFactor * 0.55);
+      bottom = mixColor(bottom, [118, 136, 158], rainFactor * 0.45);
+
+      return { top, bottom, phase: p.phase };
+    }
+
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(window.innerWidth * dpr);
+      canvas.height = Math.floor(window.innerHeight * dpr);
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      initStars();
+    }
+
+    function initStars() {
+      state.stars = Array.from({ length: 80 }, () => ({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight * 0.55,
+        r: Math.random() * 1.8 + 0.4,
+        a: Math.random() * 0.7 + 0.2,
+        tw: Math.random() * Math.PI * 2,
+      }));
+    }
+
+    function syncSliderLabels() {
+      $('tempSliderValue').textContent = `${formatNumber($('tempSlider').value, 0)} °C`;
+      $('windSliderValue').textContent = `${formatNumber($('windSlider').value, 0)} km/h`;
+      $('rainSliderValue').textContent = `${formatNumber($('rainSlider').value, 1)} mm`;
+    }
+
+    function applySimulatedValues() {
+      state.simulatedWeather.temperature = Number($('tempSlider').value);
+      state.simulatedWeather.wind = Number($('windSlider').value);
+      state.simulatedWeather.rain = Number($('rainSlider').value);
+      state.simulatedWeather.timeISO = new Date().toISOString();
+      syncSliderLabels();
+      updateHeader();
+    }
+
+    function updateHeader() {
+      const weather = activeWeather();
+      $('temperatureValue').textContent = `${formatNumber(weather.temperature, 1)} °C`;
+      $('windValue').textContent = `${formatNumber(weather.wind, 0)} km/h`;
+      $('rainValue').textContent = `${formatNumber(weather.rain, 1)} mm`;
+      $('stationLabel').textContent = weather.stationName || 'Sin datos';
+
+      const date = weather.timeISO ? new Date(weather.timeISO) : new Date();
+      const label = new Intl.DateTimeFormat('es-ES', {
+        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit'
+      }).format(date);
+      $('timeLabel').textContent = label;
+      $('modeLabel').textContent = state.mode === 'simulate' ? 'Modo simulación' : 'Modo real';
+    }
+
+    function getCurrentPosition() {
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error('Tu navegador no soporta geolocalización.'));
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000,
+        });
+      });
+    }
+
+    async function fetchAemet(path, apiKey) {
+      const first = await fetch(`${apiBase}${path}?api_key=${encodeURIComponent(apiKey)}`);
+      if (!first.ok) throw new Error(`AEMET respondió ${first.status}`);
+      const envelope = await first.json();
+      if (!envelope.datos) throw new Error(envelope.descripcion || 'AEMET no devolvió la URL de datos');
+      const second = await fetch(envelope.datos);
+      if (!second.ok) throw new Error(`No se pudo descargar el JSON final (${second.status})`);
+      return second.json();
+    }
+
+    function parseCoordinate(value) {
+      if (typeof value === 'number') return value;
+      if (typeof value !== 'string') return NaN;
+      return Number(value.replace(',', '.').trim());
+    }
+
+    function toRad(value) {
+      return value * Math.PI / 180;
+    }
+
+    function haversineKm(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    function getNearestStation(observations, coords) {
+      let nearest = null;
+      for (const item of observations) {
+        const lat = parseCoordinate(item.lat);
+        const lon = parseCoordinate(item.lon);
+        if (Number.isNaN(lat) || Number.isNaN(lon)) continue;
+        const distanceKm = haversineKm(coords.latitude, coords.longitude, lat, lon);
+        if (!nearest || distanceKm < nearest.distanceKm) {
+          nearest = { ...item, distanceKm };
+        }
+      }
+      return nearest;
+    }
+
+    async function loadRealWeather() {
+      const apiKey = $('apiKey').value.trim();
+      if (!apiKey) {
+        setStatus('Falta la API Key de AEMET.', 'warn');
+        return;
+      }
+
+      try {
+        $('realWeatherBtn').disabled = true;
+        setStatus('Pidiendo permiso de ubicación…');
+        const position = await getCurrentPosition();
+        state.location = position.coords;
+
+        setStatus('Ubicación obtenida. Descargando observaciones de AEMET…');
+        const observations = await fetchAemet('/observacion/convencional/todas', apiKey);
+        if (!Array.isArray(observations) || observations.length === 0) {
+          throw new Error('AEMET no devolvió observaciones válidas.');
+        }
+
+        const station = getNearestStation(observations, position.coords);
+        if (!station) throw new Error('No se encontró una estación válida cerca de tu posición.');
+
+        state.realWeather = {
+          temperature: Number(station.ta ?? 20),
+          wind: Number(station.vv ?? 0),
+          rain: Number(station.prec ?? 0),
+          stationName: `${station.ubi || 'Estación'} · ${formatNumber(station.distanceKm, 1)} km`,
+          timeISO: station.fint || new Date().toISOString(),
+        };
+
+        updateHeader();
+        setStatus('Datos reales cargados. El paisaje se ha actualizado con temperatura, viento y lluvia.', 'ok');
+      } catch (error) {
+        console.error(error);
+        if (error.code === 1) {
+          setStatus('Has denegado el permiso de ubicación.', 'error');
+        } else if (error.code === 2) {
+          setStatus('No se pudo determinar tu ubicación.', 'error');
+        } else if (error.code === 3) {
+          setStatus('La geolocalización ha tardado demasiado.', 'error');
+        } else {
+          setStatus(error.message || 'Ha ocurrido un error inesperado.', 'error');
+        }
+      } finally {
+        $('realWeatherBtn').disabled = false;
+      }
+    }
+
+    function loadDemo() {
+      state.realWeather = {
+        temperature: 16,
+        wind: 28,
+        rain: 7.5,
+        stationName: 'Madrid · demo visual',
+        timeISO: new Date().toISOString(),
+      };
+      if (state.mode !== 'simulate') updateHeader();
+      setStatus('Demo cargada. Puedes alternar entre modo real y simulación.', 'ok');
+    }
+
+    function drawSky(width, height, weather, hour) {
+      const palette = skyPalette(hour, weather.temperature, weather.rain);
+      const grad = ctx.createLinearGradient(0, 0, 0, height);
+      grad.addColorStop(0, rgb(palette.top));
+      grad.addColorStop(1, rgb(palette.bottom));
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, width, height);
+
+      const rainFactor = Math.min(1, weather.rain / 18);
+      const sunX = width * 0.78;
+      const sunY = height * (palette.phase === 'noche' ? 0.9 : palette.phase === 'día' ? 0.18 : 0.28);
+      const sunAlpha = palette.phase === 'noche' ? 0.06 : 0.9 - rainFactor * 0.5;
+      const sunRadius = palette.phase === 'noche' ? 28 : 56;
+      const glow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunRadius * 3.2);
+      glow.addColorStop(0, `rgba(255, 246, 196, ${sunAlpha})`);
+      glow.addColorStop(0.28, `rgba(255, 214, 150, ${sunAlpha * 0.7})`);
+      glow.addColorStop(1, 'rgba(255, 214, 150, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, sunRadius * 3.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (palette.phase === 'noche') {
+        drawStars(Math.min(1, 0.85 - rainFactor * 0.7));
+      }
+    }
+
+    function drawStars(alphaMul) {
+      for (const s of state.stars) {
+        const pulse = 0.55 + Math.sin(performance.now() * 0.0015 + s.tw) * 0.45;
+        ctx.fillStyle = `rgba(255,255,255,${s.a * pulse * alphaMul})`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawClouds(width, height, weather, dt) {
+      state.cloudDrift += dt * (4 + weather.wind * 0.18);
+      const cloudCount = 5;
+      const rainFactor = Math.min(1, weather.rain / 20);
+      for (let i = 0; i < cloudCount; i++) {
+        const baseX = ((i * 260 + state.cloudDrift * (0.4 + i * 0.06)) % (width + 360)) - 180;
+        const y = 90 + i * 38 + Math.sin(state.cloudDrift * 0.002 + i) * 8;
+        const scale = 0.9 + i * 0.14;
+        const darkness = 235 - rainFactor * 100 - i * 8;
+        ctx.fillStyle = `rgba(${darkness}, ${darkness + 3}, ${darkness + 10}, ${0.16 + rainFactor * 0.16})`;
+        cloudShape(baseX, y, 90 * scale, 32 * scale);
+      }
+    }
+
+    function cloudShape(x, y, w, h) {
+      ctx.beginPath();
+      ctx.ellipse(x, y, w * 0.26, h * 0.6, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + w * 0.18, y - h * 0.2, w * 0.24, h * 0.7, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + w * 0.42, y, w * 0.28, h * 0.75, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + w * 0.65, y + h * 0.08, w * 0.21, h * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawMountains(width, height, weather) {
+      const rainFactor = Math.min(1, weather.rain / 20);
+      const coldFactor = Math.max(0, Math.min(1, (6 - weather.temperature) / 16));
+
+      const far = ctx.createLinearGradient(0, height * 0.4, 0, height);
+      far.addColorStop(0, `rgba(${85 - rainFactor * 20}, ${110 - rainFactor * 10}, ${140 - rainFactor * 6}, 1)`);
+      far.addColorStop(1, `rgba(${42 - rainFactor * 8}, ${67 - rainFactor * 5}, ${95 - rainFactor * 5}, 1)`);
+      ctx.fillStyle = far;
+      ctx.beginPath();
+      ctx.moveTo(0, height * 0.68);
+      ctx.lineTo(width * 0.16, height * 0.48);
+      ctx.lineTo(width * 0.28, height * 0.61);
+      ctx.lineTo(width * 0.42, height * 0.4);
+      ctx.lineTo(width * 0.58, height * 0.63);
+      ctx.lineTo(width * 0.74, height * 0.46);
+      ctx.lineTo(width, height * 0.65);
+      ctx.lineTo(width, height);
+      ctx.lineTo(0, height);
+      ctx.closePath();
+      ctx.fill();
+
+      const near = ctx.createLinearGradient(0, height * 0.54, 0, height);
+      near.addColorStop(0, `rgba(${52 - rainFactor * 10}, ${78 - rainFactor * 6}, ${70 - rainFactor * 2}, 1)`);
+      near.addColorStop(1, `rgba(${22}, ${39}, ${36}, 1)`);
+      ctx.fillStyle = near;
+      ctx.beginPath();
+      ctx.moveTo(0, height * 0.82);
+      ctx.lineTo(width * 0.12, height * 0.64);
+      ctx.lineTo(width * 0.26, height * 0.75);
+      ctx.lineTo(width * 0.38, height * 0.58);
+      ctx.lineTo(width * 0.5, height * 0.78);
+      ctx.lineTo(width * 0.68, height * 0.6);
+      ctx.lineTo(width * 0.82, height * 0.74);
+      ctx.lineTo(width, height * 0.62);
+      ctx.lineTo(width, height);
+      ctx.lineTo(0, height);
+      ctx.closePath();
+      ctx.fill();
+
+      if (coldFactor > 0.08) {
+        ctx.fillStyle = `rgba(248, 251, 255, ${0.35 + coldFactor * 0.35})`;
+        ctx.beginPath();
+        ctx.moveTo(width * 0.1, height * 0.66);
+        ctx.lineTo(width * 0.12, height * 0.64);
+        ctx.lineTo(width * 0.14, height * 0.67);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(width * 0.36, height * 0.62);
+        ctx.lineTo(width * 0.38, height * 0.58);
+        ctx.lineTo(width * 0.4, height * 0.63);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(width * 0.65, height * 0.64);
+        ctx.lineTo(width * 0.68, height * 0.6);
+        ctx.lineTo(width * 0.71, height * 0.66);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    function drawGround(width, height, weather) {
+      const rainFactor = Math.min(1, weather.rain / 18);
+      const hotFactor = Math.max(0, Math.min(1, (weather.temperature - 30) / 12));
+      const groundGrad = ctx.createLinearGradient(0, height * 0.7, 0, height);
+      const top = mixColor([66, 118, 72], [166, 144, 92], hotFactor * 0.55);
+      const bottom = mixColor([27, 55, 29], [94, 76, 46], hotFactor * 0.38);
+      const rainTint = mixColor(top, [58, 76, 86], rainFactor * 0.38);
+      const rainTintBottom = mixColor(bottom, [22, 31, 37], rainFactor * 0.42);
+      groundGrad.addColorStop(0, rgb(rainTint));
+      groundGrad.addColorStop(1, rgb(rainTintBottom));
+      ctx.fillStyle = groundGrad;
+      ctx.fillRect(0, height * 0.74, width, height * 0.26);
+
+      if (weather.rain > 1) {
+        for (let i = 0; i < 4; i++) {
+          const x = width * (0.14 + i * 0.22);
+          const y = height * (0.82 + (i % 2) * 0.04);
+          const rx = 58 + i * 10;
+          const ry = 14 + (i % 2) * 6;
+          const puddle = ctx.createRadialGradient(x, y, 1, x, y, rx);
+          puddle.addColorStop(0, `rgba(164, 206, 255, ${0.09 + weather.rain / 80})`);
+          puddle.addColorStop(1, 'rgba(164, 206, 255, 0)');
+          ctx.fillStyle = puddle;
+          ctx.beginPath();
+          ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    function drawTurbine(width, height, weather, dt) {
+      const baseX = width * 0.82;
+      const baseY = height * 0.76;
+      const towerHeight = height * 0.28;
+      const windNormalized = Math.min(1, weather.wind / 90);
+      state.turbineAngle += dt * (0.001 + windNormalized * 0.012);
+
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(232, 240, 250, 0.95)';
+      ctx.lineWidth = 9;
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.lineTo(baseX, baseY - towerHeight);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(235, 243, 255, 0.95)';
+      ctx.beginPath();
+      ctx.arc(baseX, baseY - towerHeight, 10, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.translate(baseX, baseY - towerHeight);
+      ctx.rotate(state.turbineAngle);
+      for (let i = 0; i < 3; i++) {
+        ctx.save();
+        ctx.rotate(i * (Math.PI * 2 / 3));
+        ctx.fillStyle = 'rgba(243, 247, 255, 0.96)';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(8, -8, 14, -78);
+        ctx.quadraticCurveTo(3, -72, -6, -8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+
+      const sway = Math.sin(performance.now() * 0.0022) * windNormalized * 14;
+      ctx.strokeStyle = `rgba(210, 240, 255, ${0.15 + windNormalized * 0.18})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(baseX - 90, baseY - towerHeight - 24);
+      ctx.quadraticCurveTo(baseX - 30, baseY - towerHeight - 42 - sway, baseX + 48, baseY - towerHeight - 18);
+      ctx.stroke();
+    }
+
+    function spawnRain(width, height, weather, dt) {
+      const intensity = Math.min(1, weather.rain / 12);
+      const targetPerSecond = Math.round(40 + intensity * 650);
+      const toSpawn = Math.max(0, Math.floor(targetPerSecond * dt / 1000));
+      for (let i = 0; i < toSpawn; i++) {
+        state.rainParticles.push({
+          x: Math.random() * width,
+          y: -20 - Math.random() * height * 0.35,
+          len: 10 + Math.random() * 14,
+          speed: 440 + Math.random() * 420 + weather.wind * 3,
+          drift: weather.wind * 0.12 + Math.random() * 0.8,
+          alpha: 0.14 + Math.random() * 0.3,
+        });
+      }
+      if (state.rainParticles.length > 2400) {
+        state.rainParticles.splice(0, state.rainParticles.length - 2400);
+      }
+    }
+
+    function drawRain(width, height, weather, dt) {
+      if (weather.rain <= 0.1 && state.rainParticles.length === 0) return;
+      spawnRain(width, height, weather, dt);
+      ctx.strokeStyle = 'rgba(196, 226, 255, 0.45)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      const windShift = weather.wind * 0.09;
+      const next = [];
+      for (const p of state.rainParticles) {
+        p.x += (p.drift + windShift) * dt / 16;
+        p.y += p.speed * dt / 1000;
+        if (p.y < height + 30 && p.x > -60 && p.x < width + 60) {
+          next.push(p);
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p.x - (p.drift + windShift) * 0.8, p.y - p.len);
+        }
+      }
+      ctx.stroke();
+      state.rainParticles = next;
+    }
+
+    function drawMist(width, height, weather) {
+      const rainFactor = Math.min(1, weather.rain / 20);
+      const coldFactor = Math.max(0, Math.min(1, (8 - weather.temperature) / 18));
+      const opacity = Math.max(rainFactor * 0.22, coldFactor * 0.15);
+      if (opacity <= 0.02) return;
+      const mist = ctx.createLinearGradient(0, height * 0.5, 0, height);
+      mist.addColorStop(0, `rgba(220, 232, 245, 0)`);
+      mist.addColorStop(1, `rgba(220, 232, 245, ${opacity})`);
+      ctx.fillStyle = mist;
+      ctx.fillRect(0, height * 0.48, width, height * 0.52);
+    }
+
+    function render(ts) {
+      const dt = Math.min(40, ts - state.lastTs || 16);
+      state.lastTs = ts;
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const weather = activeWeather();
+      const hour = getHourFromWeather();
+
+      ctx.clearRect(0, 0, width, height);
+      drawSky(width, height, weather, hour);
+      drawClouds(width, height, weather, dt);
+      drawMountains(width, height, weather);
+      drawGround(width, height, weather);
+      drawTurbine(width, height, weather, dt);
+      drawRain(width, height, weather, dt);
+      drawMist(width, height, weather);
+
+      requestAnimationFrame(render);
+    }
+
+    $('simulateToggle').addEventListener('change', (e) => {
+      state.mode = e.target.checked ? 'simulate' : 'real';
+      updateHeader();
+      setStatus(state.mode === 'simulate'
+        ? 'Modo simulación activado. Ajusta temperatura, viento y precipitaciones desde el header.'
+        : 'Modo real activado. Se muestran los datos cargados desde AEMET o la demo.', 'ok');
+    });
+
+    ['tempSlider', 'windSlider', 'rainSlider'].forEach((id) => {
+      $(id).addEventListener('input', applySimulatedValues);
+    });
+
+    $('realWeatherBtn').addEventListener('click', loadRealWeather);
+    $('demoWeatherBtn').addEventListener('click', loadDemo);
+
+    window.addEventListener('resize', resizeCanvas);
+
+    resizeCanvas();
+    syncSliderLabels();
+    applySimulatedValues();
+    loadDemo();
+    updateHeader();
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>
