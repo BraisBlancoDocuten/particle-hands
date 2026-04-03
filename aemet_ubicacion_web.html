@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tiempo actual con AEMET</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #111a2b;
+      --panel-2: #162238;
+      --text: #e8eefc;
+      --muted: #9fb0d0;
+      --accent: #7cc6ff;
+      --ok: #87e8a9;
+      --warn: #ffd37c;
+      --danger: #ff9b9b;
+      --border: rgba(255,255,255,0.08);
+      --shadow: 0 16px 40px rgba(0,0,0,0.28);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(124,198,255,0.12), transparent 30%),
+        linear-gradient(180deg, #09101d 0%, #0b1220 100%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .container {
+      width: min(1000px, calc(100% - 32px));
+      margin: 40px auto;
+    }
+
+    .hero, .panel {
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: 28px;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(1.8rem, 2.8vw, 2.8rem);
+      line-height: 1.1;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 18px;
+    }
+
+    .panel {
+      padding: 20px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 14px 14px;
+      border-radius: 12px;
+      outline: none;
+      font-size: 0.98rem;
+    }
+
+    input::placeholder { color: #7d8fb2; }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 13px 16px;
+      font-size: 0.96rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s ease, opacity 0.2s ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+    .primary {
+      background: linear-gradient(180deg, #8ad0ff, #64b8ff);
+      color: #07203a;
+    }
+
+    .secondary {
+      background: #1b2b46;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .status {
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--muted);
+      white-space: pre-line;
+    }
+
+    .status.ok { color: var(--ok); }
+    .status.warn { color: var(--warn); }
+    .status.error { color: var(--danger); }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .metric {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .metric .label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .metric .value {
+      font-size: 1.45rem;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+
+    .subtitle {
+      margin-top: 18px;
+      margin-bottom: 8px;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .list-item {
+      background: rgba(255,255,255,0.025);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+    }
+
+    .small {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .footer-note {
+      margin-top: 16px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    code {
+      background: rgba(255,255,255,0.06);
+      padding: 0.15rem 0.35rem;
+      border-radius: 8px;
+    }
+
+    @media (max-width: 860px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .container {
+        margin: 20px auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="hero">
+      <h1>Tiempo actual con AEMET según tu ubicación</h1>
+      <p>
+        Esta demo usa la geolocalización del navegador para localizar tu posición, descarga las observaciones recientes de AEMET,
+        busca la estación más cercana y muestra sus datos más recientes.
+      </p>
+    </section>
+
+    <div class="layout">
+      <section class="panel stack">
+        <div>
+          <label for="apiKey">API Key de AEMET</label>
+          <input id="apiKey" type="password" placeholder="Pega aquí tu API Key" />
+        </div>
+
+        <div class="row">
+          <button id="locateBtn" class="primary">Usar mi ubicación</button>
+          <button id="demoBtn" class="secondary">Cargar demo</button>
+        </div>
+
+        <div id="status" class="status">Introduce tu API Key y pulsa en “Usar mi ubicación”.</div>
+
+        <div class="footer-note">
+          Notas:
+          <br />• La geolocalización del navegador requiere <strong>HTTPS</strong> o <code>localhost</code>.
+          <br />• AEMET devuelve primero una URL temporal en <code>datos</code>, y después hay que descargar ese JSON.
+          <br />• Esta demo evita backend, así que tu API Key se usa en el navegador.
+        </div>
+      </section>
+
+      <section class="panel">
+        <div id="emptyState">
+          <p>Aquí aparecerán la estación más cercana y las medidas meteorológicas disponibles.</p>
+        </div>
+
+        <div id="result" style="display:none;">
+          <h2 id="stationName" style="margin:0 0 6px;"></h2>
+          <p id="stationMeta"></p>
+
+          <div class="metric-grid" id="metrics"></div>
+
+          <div class="subtitle">Ubicación</div>
+          <div class="list">
+            <div class="list-item small" id="locationInfo"></div>
+          </div>
+
+          <div class="subtitle">Observación</div>
+          <div class="list" id="extraInfo"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const apiBase = 'https://opendata.aemet.es/opendata/api';
+
+    const $ = (id) => document.getElementById(id);
+    const statusEl = $('status');
+    const resultEl = $('result');
+    const emptyStateEl = $('emptyState');
+    const metricsEl = $('metrics');
+    const extraInfoEl = $('extraInfo');
+
+    function setStatus(message, tone = '') {
+      statusEl.className = `status ${tone}`.trim();
+      statusEl.textContent = message;
+    }
+
+    function formatNumber(value, digits = 1) {
+      if (value === undefined || value === null || value === '') return '—';
+      const num = Number(value);
+      if (Number.isNaN(num)) return String(value);
+      return new Intl.NumberFormat('es-ES', {
+        maximumFractionDigits: digits,
+        minimumFractionDigits: 0,
+      }).format(num);
+    }
+
+    function toRad(value) {
+      return (value * Math.PI) / 180;
+    }
+
+    function haversineKm(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    function parseCoordinate(value) {
+      if (typeof value === 'number') return value;
+      if (typeof value !== 'string') return NaN;
+      const normalized = value.replace(',', '.').trim();
+      return Number(normalized);
+    }
+
+    async function fetchAemet(path, apiKey) {
+      const firstResponse = await fetch(`${apiBase}${path}?api_key=${encodeURIComponent(apiKey)}`);
+      if (!firstResponse.ok) {
+        throw new Error(`AEMET respondió ${firstResponse.status}`);
+      }
+
+      const envelope = await firstResponse.json();
+      if (!envelope.datos) {
+        throw new Error(envelope.descripcion || 'No se recibió la URL de datos de AEMET');
+      }
+
+      const dataResponse = await fetch(envelope.datos);
+      if (!dataResponse.ok) {
+        throw new Error(`No se pudo descargar el JSON final (${dataResponse.status})`);
+      }
+
+      return dataResponse.json();
+    }
+
+    function getNearestStation(observations, coords) {
+      let nearest = null;
+
+      for (const item of observations) {
+        const lat = parseCoordinate(item.lat);
+        const lon = parseCoordinate(item.lon);
+
+        if (Number.isNaN(lat) || Number.isNaN(lon)) continue;
+
+        const distanceKm = haversineKm(coords.latitude, coords.longitude, lat, lon);
+
+        if (!nearest || distanceKm < nearest.distanceKm) {
+          nearest = { ...item, distanceKm };
+        }
+      }
+
+      return nearest;
+    }
+
+    function renderMetric(label, value, suffix = '') {
+      const card = document.createElement('div');
+      card.className = 'metric';
+      card.innerHTML = `
+        <div class="label">${label}</div>
+        <div class="value">${value}${suffix}</div>
+      `;
+      return card;
+    }
+
+    function renderResult(station, coords) {
+      $('stationName').textContent = station.ubi || 'Estación cercana';
+      $('stationMeta').textContent = `${station.idema || '—'} · ${formatNumber(station.distanceKm, 1)} km · ${station.fint || 'Hora no disponible'}`;
+
+      metricsEl.innerHTML = '';
+      metricsEl.append(
+        renderMetric('Temperatura', formatNumber(station.ta), ' °C'),
+        renderMetric('Sensación', formatNumber(station.tas), ' °C'),
+        renderMetric('Humedad', formatNumber(station.hr, 0), ' %'),
+        renderMetric('Presión', formatNumber(station.pres, 0), ' hPa'),
+        renderMetric('Viento', formatNumber(station.vv, 1), ' km/h'),
+        renderMetric('Lluvia 1h', formatNumber(station.prec, 1), ' mm')
+      );
+
+      $('locationInfo').innerHTML = `
+        Tus coordenadas: <strong>${formatNumber(coords.latitude, 5)}, ${formatNumber(coords.longitude, 5)}</strong><br />
+        Coordenadas estación: <strong>${formatNumber(parseCoordinate(station.lat), 5)}, ${formatNumber(parseCoordinate(station.lon), 5)}</strong>
+      `;
+
+      const extras = [
+        ['Dirección del viento', station.dv != null ? `${station.dv}°` : '—'],
+        ['Racha máxima', station.racha != null ? `${formatNumber(station.racha, 1)} km/h` : '—'],
+        ['Visibilidad', station.vs != null ? `${formatNumber(station.vs, 0)} m` : '—'],
+        ['Altitud estación', station.alt != null ? `${station.alt} m` : '—'],
+        ['Provincia', station.provincia || '—'],
+      ];
+
+      extraInfoEl.innerHTML = extras
+        .map(([label, value]) => `<div class="list-item"><strong>${label}:</strong> <span class="small">${value}</span></div>`)
+        .join('');
+
+      emptyStateEl.style.display = 'none';
+      resultEl.style.display = 'block';
+    }
+
+    function getCurrentPosition() {
+      return new Promise((resolve, reject) => {
+        if (!('geolocation' in navigator)) {
+          reject(new Error('Tu navegador no soporta geolocalización.'));
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000,
+        });
+      });
+    }
+
+    async function loadWeatherFromCurrentLocation() {
+      const apiKey = $('apiKey').value.trim();
+      if (!apiKey) {
+        setStatus('Falta la API Key de AEMET.', 'warn');
+        return;
+      }
+
+      try {
+        $('locateBtn').disabled = true;
+        setStatus('Pidiendo permiso de ubicación…');
+
+        const position = await getCurrentPosition();
+        const coords = position.coords;
+
+        setStatus('Ubicación obtenida. Descargando observaciones de AEMET…');
+        const observations = await fetchAemet('/observacion/convencional/todas', apiKey);
+
+        if (!Array.isArray(observations) || observations.length === 0) {
+          throw new Error('AEMET no devolvió observaciones utilizables.');
+        }
+
+        setStatus('Buscando la estación más cercana…');
+        const nearest = getNearestStation(observations, coords);
+
+        if (!nearest) {
+          throw new Error('No se encontró ninguna estación válida cerca de tu posición.');
+        }
+
+        renderResult(nearest, coords);
+        setStatus('Datos cargados correctamente.', 'ok');
+      } catch (error) {
+        console.error(error);
+
+        if (error.code === 1) {
+          setStatus('Has denegado el permiso de ubicación.', 'error');
+        } else if (error.code === 2) {
+          setStatus('No se pudo determinar tu ubicación.', 'error');
+        } else if (error.code === 3) {
+          setStatus('La geolocalización ha tardado demasiado.', 'error');
+        } else {
+          setStatus(error.message || 'Ha ocurrido un error inesperado.', 'error');
+        }
+      } finally {
+        $('locateBtn').disabled = false;
+      }
+    }
+
+    function loadDemo() {
+      const demoCoords = { latitude: 40.4168, longitude: -3.7038 };
+      const demoStation = {
+        idemа: 'DEMO',
+        idema: 'DEMO',
+        ubi: 'Madrid / estación de ejemplo',
+        provincia: 'Madrid',
+        fint: new Date().toISOString(),
+        distanceKm: 4.2,
+        lat: 40.45,
+        lon: -3.69,
+        ta: 18.4,
+        tas: 18.0,
+        hr: 47,
+        pres: 1018,
+        vv: 9,
+        prec: 0,
+        dv: 230,
+        racha: 17,
+        vs: 12000,
+        alt: 667
+      };
+
+      renderResult(demoStation, demoCoords);
+      setStatus('Demo cargada. Para datos reales, introduce tu API Key y usa tu ubicación.', 'ok');
+    }
+
+    $('locateBtn').addEventListener('click', loadWeatherFromCurrentLocation);
+    $('demoBtn').addEventListener('click', loadDemo);
+  </script>
+</body>
+</html>
