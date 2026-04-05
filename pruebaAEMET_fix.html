@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tiempo actual · AEMET</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --panel: #0e1c30;
+      --panel-2: #132540;
+      --panel-3: #1a3050;
+      --text: #e4edfb;
+      --muted: #8ba4c8;
+      --accent: #5ab4ff;
+      --accent-dark: #07203a;
+      --ok: #6edda0;
+      --warn: #f5c842;
+      --danger: #ff7f7f;
+      --border: rgba(255,255,255,0.07);
+      --border-focus: rgba(90,180,255,0.5);
+      --shadow: 0 20px 48px rgba(0,0,0,0.4);
+      --radius: 16px;
+      --radius-sm: 10px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse 80% 40% at 50% -10%, rgba(90,180,255,0.10), transparent);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ── Layout ── */
+    .container {
+      width: min(1200px, calc(100% - 32px));
+      margin: 36px auto 60px;
+    }
+
+    .hero {
+      padding: 32px 36px;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, rgba(90,180,255,0.06), rgba(255,255,255,0.02));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: clamp(1.5rem, 2.5vw, 2.2rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      background: linear-gradient(90deg, #fff 60%, var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.97rem;
+      max-width: 70ch;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      position: sticky;
+      top: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+
+    .panel-title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0 0 14px;
+    }
+
+    /* ── Forms ── */
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    input, select {
+      width: 100%;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 11px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238ba4c8' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 36px;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(90,180,255,0.12);
+    }
+
+    input::placeholder { color: #4a6080; }
+
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    /* ── Buttons ── */
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      width: 100%;
+      min-height: 44px;
+      border: 0;
+      border-radius: var(--radius-sm);
+      padding: 10px 16px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.12s ease, opacity 0.18s ease, box-shadow 0.18s ease;
+      white-space: normal;
+      text-align: center;
+      line-height: 1.3;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+
+    button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #5ab4ff, #3a9aee);
+      color: var(--accent-dark);
+      box-shadow: 0 4px 14px rgba(90,180,255,0.25);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      box-shadow: 0 6px 20px rgba(90,180,255,0.35);
+    }
+
+    .btn-secondary {
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--panel-3);
+    }
+
+    /* ── Status ── */
+    .status-box {
+      padding: 13px 15px;
+      border-radius: var(--radius-sm);
+      font-size: 0.9rem;
+      line-height: 1.55;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+      color: var(--muted);
+      white-space: pre-line;
+    }
+
+    .status-box.ok     { color: var(--ok);     border-color: rgba(110,221,160,0.25); background: rgba(110,221,160,0.05); }
+    .status-box.warn   { color: var(--warn);   border-color: rgba(245,200,66,0.25);  background: rgba(245,200,66,0.05); }
+    .status-box.error  { color: var(--danger); border-color: rgba(255,127,127,0.25); background: rgba(255,127,127,0.05); }
+
+    .status-icon { font-size: 1.1em; }
+
+    /* ── Notes ── */
+    .notes {
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.6;
+      padding: 14px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .notes p { margin: 0 0 4px; }
+    .notes p:last-child { margin: 0; }
+
+    code {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.85em;
+      background: rgba(90,180,255,0.1);
+      color: var(--accent);
+      padding: 0.1em 0.4em;
+      border-radius: 5px;
+    }
+
+    /* ── Main content ── */
+    .content-area {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 60px 32px;
+      color: var(--muted);
+      background: var(--panel);
+      border: 1px dashed rgba(255,255,255,0.1);
+      border-radius: var(--radius);
+      gap: 12px;
+    }
+
+    .empty-state .empty-icon {
+      font-size: 2.5rem;
+      opacity: 0.5;
+    }
+
+    .empty-state h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text);
+      opacity: 0.7;
+    }
+
+    .empty-state p {
+      margin: 0;
+      font-size: 0.9rem;
+      max-width: 36ch;
+      color: var(--muted);
+    }
+
+    /* ── Station card ── */
+    .station-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+    }
+
+    .station-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .station-header h2 {
+      margin: 0;
+      font-size: 1.45rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .station-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 5px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: rgba(90,180,255,0.1);
+      color: var(--accent);
+    }
+
+    .badge.green {
+      background: rgba(110,221,160,0.1);
+      color: var(--ok);
+      border-color: rgba(110,221,160,0.2);
+    }
+
+    /* ── Metrics ── */
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+    }
+
+    .metric-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .metric-value {
+      font-size: 1.6rem;
+      font-weight: 800;
+      line-height: 1;
+      color: var(--text);
+    }
+
+    .metric-unit {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--muted);
+      margin-left: 2px;
+    }
+
+    /* ── Details section ── */
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 8px;
+    }
+
+    .detail-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 11px 13px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .detail-item .detail-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+    }
+
+    .detail-item .detail-value {
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    /* ── Section header ── */
+    .section-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 20px 0 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Table ── */
+    .table-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .table-header {
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .table-header h3 {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      width: 100%;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+    }
+
+    th {
+      padding: 11px 14px;
+      text-align: left;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      position: sticky;
+      top: 0;
+    }
+
+    td {
+      padding: 11px 14px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 0.9rem;
+      color: var(--muted);
+      vertical-align: middle;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+    tr.is-selected td { color: var(--text); }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      background: rgba(110,221,160,0.12);
+      color: var(--ok);
+      border: 1px solid rgba(110,221,160,0.25);
+    }
+
+    .muted-dash { color: rgba(255,255,255,0.2); }
+
+    /* ── Responsive ── */
+    @media (max-width: 860px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+      }
+
+      .controls-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .hero {
+        padding: 22px 20px;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .controls-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <header class="hero" role="banner">
+      <h1>🌤 Tiempo actual con AEMET</h1>
+      <p>
+        Consulta las estaciones meteorológicas más cercanas o más actualizadas según tu ubicación,
+        dentro de un radio configurable.
+      </p>
+    </header>
+
+    <div class="layout">
+
+      <!-- ── Sidebar ── -->
+      <aside class="sidebar" aria-label="Panel de configuración">
+
+        <div class="panel">
+          <p class="panel-title">Configuración</p>
+
+          <div class="controls-grid" style="margin-bottom: 4px;">
+            <div class="field">
+              <label for="radiusKm">Radio (km)</label>
+              <input id="radiusKm" type="number" min="1" step="1" value="30" aria-label="Radio de búsqueda en kilómetros" />
+            </div>
+            <div class="field">
+              <label for="selectionMode">Priorizar</label>
+              <select id="selectionMode" aria-label="Criterio de selección de estación">
+                <option value="nearest">Más cercana</option>
+                <option value="latest">Más reciente</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <p class="panel-title">Acciones</p>
+          <div class="btn-group">
+            <button id="locateBtn" class="btn-primary" aria-label="Usar mi ubicación GPS para buscar estaciones">
+              📍 Usar mi ubicación
+            </button>
+            <button id="refreshBtn" class="btn-secondary" disabled aria-label="Recargar los datos de la última consulta">
+              🔄 Recargar datos
+            </button>
+            <button id="demoBtn" class="btn-secondary" aria-label="Cargar datos de demostración de A Coruña">
+              🧪 Ver demo (A Coruña)
+            </button>
+          </div>
+        </div>
+
+        <div
+          id="status"
+          class="status-box"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          La página intentará cargar automáticamente la estación más cercana usando tu ubicación.
+        </div>
+
+        <details class="notes">
+          <summary style="cursor:pointer; font-weight:600; color:var(--text); margin-bottom:8px; list-style:none; display:flex; align-items:center; gap:6px;">
+            ℹ️ Notas técnicas
+          </summary>
+          <p>• Al abrir la página se intenta cargar automáticamente la estación más cercana.</p>
+          <p>• Requiere <strong>HTTPS</strong> o <code>localhost</code> para geolocalización.</p>
+          <p>• AEMET devuelve primero una URL en <code>datos</code>; luego se descarga el JSON.</p>
+          <p>• "Más reciente" usa la fecha de observación (<code>fint</code>).</p>
+          <p>• Se muestra solo la lectura más reciente por estación (<code>idema</code>).</p>
+        </details>
+
+      </aside>
+
+      <!-- ── Main content ── -->
+      <main class="content-area" aria-label="Resultados meteorológicos">
+
+        <div id="emptyState" class="empty-state" role="region" aria-label="Estado inicial">
+          <div class="empty-icon" aria-hidden="true">🌍</div>
+          <h2>Aún no hay datos</h2>
+          <p>Usa tu ubicación o carga la demo para ver las estaciones meteorológicas cercanas.</p>
+        </div>
+
+        <div id="result" style="display:none;" role="region" aria-label="Resultados de la consulta">
+
+          <div class="station-card">
+            <div class="station-header">
+              <div>
+                <h2 id="stationName"></h2>
+                <div class="station-meta" id="stationMeta"></div>
+              </div>
+            </div>
+
+            <div class="metric-grid" id="metrics"></div>
+
+            <div class="section-title">Detalles de la observación</div>
+            <div class="detail-grid" id="extraInfo"></div>
+
+            <div class="section-title">Resumen de búsqueda</div>
+            <div class="detail-grid" id="searchSummary"></div>
+          </div>
+
+          <div class="table-panel" role="region" aria-label="Listado de estaciones en el radio">
+            <div class="table-header">
+              <h3>Estaciones en el radio</h3>
+              <span id="stationCount" class="badge"></span>
+            </div>
+            <div class="table-wrap">
+              <table aria-label="Tabla de estaciones meteorológicas encontradas">
+                <thead>
+                  <tr>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Estación</th>
+                    <th scope="col">IDEMA</th>
+                    <th scope="col">Distancia</th>
+                    <th scope="col">Lectura</th>
+                    <th scope="col">Temp.</th>
+                    <th scope="col">Humedad</th>
+                    <th scope="col">Viento</th>
+                    <th scope="col">Provincia</th>
+                  </tr>
+                </thead>
+                <tbody id="stationsTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const apiBase = 'https://opendata.aemet.es/opendata/api';
+
+    const $ = (id) => document.getElementById(id);
+    const AEMET_API_KEY = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ3d2J2dWZia25yeWhwYWh4ZWVAbmVzb3BmLmNvbSIsImp0aSI6IjRhYzU0NGY1LTRlNmItNDA3YS1iMmU3LTBiOTFlMjI3MDE0YyIsImlzcyI6IkFFTUVUIiwiaWF0IjoxNzc1MjQ5MzE0LCJ1c2VySWQiOiI0YWM1NDRmNS00ZTZiLTQwN2EtYjJlNy0wYjkxZTIyNzAxNGMiLCJyb2xlIjoiIn0.iNYOIEyAGLIiyAUuFiG9o2rVNCvM62XfvIhy2cCSptI';
+    const statusEl     = $('status');
+    const resultEl     = $('result');
+    const emptyStateEl = $('emptyState');
+    const metricsEl    = $('metrics');
+    const extraInfoEl  = $('extraInfo');
+    const stationsTableBodyEl = $('stationsTableBody');
+
+    let lastCoords           = null;
+    let lastMode             = null;
+    let lastUpdatedAt        = null;
+    let lastStationsInRadius = [];
+    let lastSelectedStation  = null;
+    const shouldAutoLoadOnStart = true;
+    let hasAutoLoaded = false;
+
+    /* ── Utilities ── */
+    function setStatus(message, tone = '') {
+      statusEl.className = `status-box ${tone}`.trim();
+      const icons = { ok: '✅', warn: '⚠️', error: '❌', '': 'ℹ️' };
+      statusEl.innerHTML = `<span class="status-icon" aria-hidden="true">${icons[tone] ?? 'ℹ️'}</span> ${message}`;
+    }
+
+    function formatNumber(value, digits = 1) {
+      if (value === undefined || value === null || value === '') return '—';
+      const num = Number(value);
+      if (Number.isNaN(num)) return String(value);
+      return new Intl.NumberFormat('es-ES', {
+        maximumFractionDigits: digits,
+        minimumFractionDigits: 0,
+      }).format(num);
+    }
+
+    function formatDateTime(value) {
+      if (!value) return '—';
+      const date = value instanceof Date ? value : new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return new Intl.DateTimeFormat('es-ES', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      }).format(date);
+    }
+
+    function parseDate(value) {
+      if (!value) return null;
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    function fixMojibake(text) {
+      if (typeof text !== 'string') return text;
+      const replacements = {
+        'A CoruÃ±a': 'A Coruña', 'CoruÃ±a': 'Coruña',
+        'EspaÃ±a': 'España', 'LeÃ³n': 'León',
+        'CÃ¡ceres': 'Cáceres', 'JaÃ©n': 'Jaén',
+        'MÃ¡laga': 'Málaga', 'CÃ³rdoba': 'Córdoba',
+        'AlmerÃ­a': 'Almería', 'ValÃ¨ncia': 'València',
+        'Ã¡': 'á', 'Ã©': 'é', 'Ã­': 'í', 'Ã³': 'ó',
+        'Ãº': 'ú', 'Ã±': 'ñ', 'Ã'': 'Ñ', 'Ã¼': 'ü',
+      };
+      let out = text;
+      for (const [bad, good] of Object.entries(replacements)) {
+        out = out.split(bad).join(good);
+      }
+      return out;
+    }
+
+    function cleanText(value, fallback = '—') {
+      if (value === undefined || value === null || value === '') return fallback;
+      return fixMojibake(String(value).trim());
+    }
+
+    function toRad(v) { return (v * Math.PI) / 180; }
+
+    function haversineKm(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    function parseCoordinate(value) {
+      if (typeof value === 'number') return value;
+      if (typeof value !== 'string') return NaN;
+      return Number(value.replace(',', '.').trim());
+    }
+
+    function getRadiusKm() {
+      const value = Number($('radiusKm').value);
+      return Number.isFinite(value) && value > 0 ? value : 30;
+    }
+
+    function getSelectionMode() {
+      return $('selectionMode').value === 'latest' ? 'latest' : 'nearest';
+    }
+
+    /* ── AEMET ── */
+    async function fetchAemet(path, apiKey) {
+      const r1 = await fetch(`${apiBase}${path}?api_key=${encodeURIComponent(apiKey)}`);
+      if (!r1.ok) throw new Error(`AEMET respondió ${r1.status}`);
+      const envelope = await r1.json();
+      if (!envelope.datos) throw new Error(envelope.descripcion || 'No se recibió la URL de datos de AEMET');
+      const r2 = await fetch(envelope.datos);
+      if (!r2.ok) throw new Error(`No se pudo descargar el JSON final (${r2.status})`);
+      return r2.json();
+    }
+
+    function dedupeStationsByLatestObservation(observations) {
+      const byIdema = new Map();
+      for (const item of observations) {
+        const idema = String(item.idema || '').trim();
+        if (!idema) continue;
+        const currentDate = parseDate(item.fint);
+        const existing = byIdema.get(idema);
+        if (!existing) { byIdema.set(idema, item); continue; }
+        const currentTs  = currentDate ? currentDate.getTime() : -1;
+        const existingTs = parseDate(existing.fint)?.getTime() ?? -1;
+        if (currentTs > existingTs) byIdema.set(idema, item);
+      }
+      return Array.from(byIdema.values());
+    }
+
+    function getStationsInRadius(observations, coords, radiusKm) {
+      return observations.reduce((acc, item) => {
+        const lat = parseCoordinate(item.lat);
+        const lon = parseCoordinate(item.lon);
+        if (Number.isNaN(lat) || Number.isNaN(lon)) return acc;
+        const distanceKm = haversineKm(coords.latitude, coords.longitude, lat, lon);
+        if (distanceKm <= radiusKm) acc.push({ ...item, distanceKm, observationDate: parseDate(item.fint) });
+        return acc;
+      }, []);
+    }
+
+    function sortStations(stations, mode) {
+      return [...stations].sort((a, b) => {
+        const tA = a.observationDate?.getTime() ?? -1;
+        const tB = b.observationDate?.getTime() ?? -1;
+        if (mode === 'latest') return tB !== tA ? tB - tA : a.distanceKm - b.distanceKm;
+        return a.distanceKm !== b.distanceKm ? a.distanceKm - b.distanceKm : tB - tA;
+      });
+    }
+
+    function pickBestStation(stations, mode) {
+      return sortStations(stations, mode)[0] || null;
+    }
+
+    /* ── Render ── */
+    function renderMetric(label, value, unit = '') {
+      const el = document.createElement('div');
+      el.className = 'metric';
+      el.innerHTML = `
+        <div class="metric-label">${label}</div>
+        <div class="metric-value">${value}<span class="metric-unit">${unit}</span></div>
+      `;
+      return el;
+    }
+
+    function renderDetailItem(label, value) {
+      return `<div class="detail-item">
+        <span class="detail-label">${label}</span>
+        <span class="detail-value">${value}</span>
+      </div>`;
+    }
+
+    function renderSelectedStation(station, coords, radiusKm, selectionMode) {
+      $('stationName').textContent = cleanText(station.ubi, 'Estación seleccionada');
+
+      const modeLabel = selectionMode === 'latest' ? 'Más reciente' : 'Más cercana';
+      $('stationMeta').innerHTML = `
+        <span class="badge">${cleanText(station.idema)}</span>
+        <span class="badge">${formatNumber(station.distanceKm, 1)} km</span>
+        <span class="badge green">🎯 ${modeLabel}</span>
+        <span class="badge">📅 ${formatDateTime(station.fint)}</span>
+      `;
+
+      metricsEl.innerHTML = '';
+      metricsEl.append(
+        renderMetric('Temperatura',  formatNumber(station.ta),       ' °C'),
+        renderMetric('Sensación',    formatNumber(station.tas),      ' °C'),
+        renderMetric('Humedad',      formatNumber(station.hr, 0),    ' %'),
+        renderMetric('Presión',      formatNumber(station.pres, 0),  ' hPa'),
+        renderMetric('Viento',       formatNumber(station.vv, 1),    ' km/h'),
+        renderMetric('Lluvia 1h',    formatNumber(station.prec, 1),  ' mm'),
+      );
+
+      const details = [
+        ['Tus coordenadas',       `${formatNumber(coords.latitude, 5)}, ${formatNumber(coords.longitude, 5)}`],
+        ['Coordenadas estación',  `${formatNumber(parseCoordinate(station.lat), 5)}, ${formatNumber(parseCoordinate(station.lon), 5)}`],
+        ['Radio usado',           `${formatNumber(radiusKm, 0)} km`],
+        ['Dirección viento',      station.dv   != null ? `${station.dv}°`                         : '—'],
+        ['Racha máxima',          station.racha != null ? `${formatNumber(station.racha, 1)} km/h` : '—'],
+        ['Visibilidad',           station.vs   != null ? `${formatNumber(station.vs, 0)} m`       : '—'],
+        ['Altitud estación',      station.alt  != null ? `${station.alt} m`                       : '—'],
+        ['Provincia',             cleanText(station.provincia)],
+        ['Actualizado en web',    formatDateTime(lastUpdatedAt)],
+      ];
+
+      extraInfoEl.innerHTML = details.map(([l, v]) => renderDetailItem(l, v)).join('');
+
+      $('searchSummary').innerHTML = [
+        ['Estaciones encontradas', `${lastStationsInRadius.length} dentro de ${formatNumber(radiusKm, 0)} km`],
+        ['Criterio activo',        selectionMode === 'latest' ? 'Más reciente' : 'Más cercana'],
+        ['Lectura seleccionada',   formatDateTime(station.fint)],
+      ].map(([l, v]) => renderDetailItem(l, v)).join('');
+
+      $('stationCount').textContent = `${lastStationsInRadius.length} estaciones`;
+
+      emptyStateEl.style.display = 'none';
+      resultEl.style.display = 'block';
+    }
+
+    function renderStationsTable(stations, selectedStation) {
+      stationsTableBodyEl.innerHTML = '';
+      const sorted = sortStations(stations, getSelectionMode());
+
+      for (const s of sorted) {
+        const isSelected = selectedStation &&
+          s.idema === selectedStation.idema &&
+          s.fint  === selectedStation.fint;
+
+        const tr = document.createElement('tr');
+        if (isSelected) tr.className = 'is-selected';
+        tr.setAttribute('aria-label', `${cleanText(s.ubi)}${isSelected ? ', estación seleccionada' : ''}`);
+
+        tr.innerHTML = `
+          <td>${isSelected ? '<span class="pill">✓ Elegida</span>' : '<span class="muted-dash" aria-hidden="true">—</span>'}</td>
+          <td style="color:var(--text); font-weight:${isSelected ? '600' : '400'}">${cleanText(s.ubi)}</td>
+          <td><code>${cleanText(s.idema)}</code></td>
+          <td>${formatNumber(s.distanceKm, 1)} km</td>
+          <td>${formatDateTime(s.fint)}</td>
+          <td>${s.ta   != null ? `<strong>${formatNumber(s.ta, 1)}</strong> °C`   : '—'}</td>
+          <td>${s.hr   != null ? `${formatNumber(s.hr, 0)} %`                     : '—'}</td>
+          <td>${s.vv   != null ? `${formatNumber(s.vv, 1)} km/h`                  : '—'}</td>
+          <td>${cleanText(s.provincia)}</td>
+        `;
+        stationsTableBodyEl.appendChild(tr);
+      }
+    }
+
+    function getCurrentPosition() {
+      return new Promise((resolve, reject) => {
+        if (!('geolocation' in navigator)) {
+          reject(new Error('Tu navegador no soporta geolocalización.'));
+          return;
+        }
+        if (window.location.protocol === 'file:') {
+          reject(new Error('La geolocalización suele bloquearse al abrir el HTML con doble clic (file://). Ábrelo desde localhost o HTTPS.'));
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000,
+        });
+      });
+    }
+
+    async function loadWeather(coordsOverride = null) {
+      const apiKey = AEMET_API_KEY;
+
+      const radiusKm     = getRadiusKm();
+      const selectionMode = getSelectionMode();
+
+      try {
+        $('locateBtn').disabled = true;
+        $('refreshBtn').disabled = true;
+        $('demoBtn').disabled   = true;
+
+        let coords = coordsOverride;
+        if (!coords) {
+          setStatus('Solicitando permiso de ubicación…');
+          const position = await getCurrentPosition();
+          coords = position.coords;
+        }
+
+        lastCoords = { latitude: coords.latitude, longitude: coords.longitude };
+        lastMode   = 'location';
+
+        setStatus('Ubicación obtenida. Descargando observaciones de AEMET…');
+        const rawObservations = await fetchAemet('/observacion/convencional/todas', apiKey);
+
+        if (!Array.isArray(rawObservations) || rawObservations.length === 0)
+          throw new Error('AEMET no devolvió observaciones utilizables.');
+
+        const observations     = dedupeStationsByLatestObservation(rawObservations);
+        setStatus(`Analizando estaciones dentro de ${formatNumber(radiusKm, 0)} km…`);
+        const stationsInRadius = getStationsInRadius(observations, lastCoords, radiusKm);
+
+        if (!stationsInRadius.length)
+          throw new Error(`No se encontraron estaciones dentro de ${formatNumber(radiusKm, 0)} km.`);
+
+        const selectedStation = pickBestStation(stationsInRadius, selectionMode);
+        if (!selectedStation) throw new Error('No se pudo seleccionar una estación válida.');
+
+        lastStationsInRadius = stationsInRadius;
+        lastSelectedStation  = selectedStation;
+        lastUpdatedAt        = new Date();
+
+        renderSelectedStation(selectedStation, lastCoords, radiusKm, selectionMode);
+        renderStationsTable(stationsInRadius, selectedStation);
+
+        setStatus(
+          `Datos cargados · ${stationsInRadius.length} estaciones · criterio: ${selectionMode === 'latest' ? 'más reciente' : 'más cercana'} · lectura: ${formatDateTime(selectedStation.fint)}`,
+          'ok'
+        );
+      } catch (error) {
+        console.error(error);
+        const msg = error.code === 1 ? 'Permiso de ubicación denegado.'
+                  : error.code === 2 ? 'No se pudo determinar tu ubicación.'
+                  : error.code === 3 ? 'La geolocalización tardó demasiado.'
+                  : error.message || 'Ha ocurrido un error inesperado.';
+        setStatus(msg, 'error');
+      } finally {
+        $('locateBtn').disabled = false;
+        $('demoBtn').disabled   = false;
+        $('refreshBtn').disabled = !lastMode;
+      }
+    }
+
+    function loadDemo() {
+      const coords        = { latitude: 43.3623, longitude: -8.4115 };
+      const radiusKm      = getRadiusKm();
+      const selectionMode = getSelectionMode();
+
+      const rawDemoStations = [
+        { idema: '15030', ubi: 'A Coruña', provincia: 'A Coruña',
+          fint: '2026-04-04T10:00:00', lat: 43.3623, lon: -8.4115,
+          ta: 16.4, tas: 15.8, hr: 69, pres: 1017, vv: 12, prec: 0,
+          dv: 300, racha: 24, vs: 15000, alt: 58 },
+        { idema: '15030', ubi: 'A Coruña', provincia: 'A Coruña',
+          fint: '2026-04-04T10:30:00', lat: 43.3623, lon: -8.4115,
+          ta: 16.8, tas: 16.2, hr: 67, pres: 1018, vv: 11, prec: 0,
+          dv: 305, racha: 22, vs: 16000, alt: 58 },
+        { idema: '15078', ubi: 'Oleiros', provincia: 'A Coruña',
+          fint: '2026-04-04T10:20:00', lat: 43.333, lon: -8.313,
+          ta: 15.9, tas: 15.2, hr: 72, pres: 1017, vv: 10, prec: 0,
+          dv: 295, racha: 18, vs: 14000, alt: 76 },
+        { idema: '15012', ubi: 'Arteixo', provincia: 'A Coruña',
+          fint: '2026-04-04T09:50:00', lat: 43.304, lon: -8.507,
+          ta: 15.2, tas: 14.6, hr: 75, pres: 1016, vv: 14, prec: 0.2,
+          dv: 310, racha: 27, vs: 12000, alt: 80 },
+      ];
+
+      const observations     = dedupeStationsByLatestObservation(rawDemoStations);
+      const stationsInRadius = getStationsInRadius(observations, coords, radiusKm);
+
+      if (!stationsInRadius.length) {
+        setStatus(`La demo no tiene estaciones dentro de ${formatNumber(radiusKm, 0)} km. Prueba con un radio mayor.`, 'warn');
+        return;
+      }
+
+      const selectedStation    = pickBestStation(stationsInRadius, selectionMode);
+      lastCoords               = coords;
+      lastMode                 = 'demo';
+      lastStationsInRadius     = stationsInRadius;
+      lastSelectedStation      = selectedStation;
+      lastUpdatedAt            = new Date();
+
+      renderSelectedStation(selectedStation, coords, radiusKm, selectionMode);
+      renderStationsTable(stationsInRadius, selectedStation);
+
+      setStatus(
+        `Demo cargada · ${stationsInRadius.length} estaciones · criterio: ${selectionMode === 'latest' ? 'más reciente' : 'más cercana'}`,
+        'ok'
+      );
+      $('refreshBtn').disabled = false;
+    }
+
+    async function refreshWeather() {
+      if (!lastMode) { setStatus('Primero carga datos con tu ubicación o usa la demo.', 'warn'); return; }
+      if (lastMode === 'demo') { loadDemo(); return; }
+      await loadWeather(lastCoords);
+    }
+
+    function initializeDefaults() {
+      $('selectionMode').value = 'nearest';
+    }
+
+    async function autoLoadNearestStation() {
+      if (!shouldAutoLoadOnStart || hasAutoLoaded) return;
+      hasAutoLoaded = true;
+      setStatus('Intentando obtener tu ubicación para cargar la estación más cercana…');
+      try {
+        await loadWeather();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    initializeDefaults();
+
+    $('locateBtn').addEventListener('click', () => loadWeather());
+    $('refreshBtn').addEventListener('click', refreshWeather);
+    $('demoBtn').addEventListener('click', loadDemo);
+    $('selectionMode').addEventListener('change', () => {
+      if (lastMode === 'demo') {
+        loadDemo();
+      } else if (lastMode === 'location' && lastStationsInRadius.length) {
+        const selectionMode   = getSelectionMode();
+        const selectedStation = pickBestStation(lastStationsInRadius, selectionMode);
+        if (selectedStation) {
+          lastSelectedStation = selectedStation;
+          renderSelectedStation(selectedStation, lastCoords, getRadiusKm(), selectionMode);
+          renderStationsTable(lastStationsInRadius, selectedStation);
+        }
+      }
+    });
+
+    window.addEventListener('load', () => {
+      autoLoadNearestStation();
+    });
+  </script>
+</body>
+</html>
